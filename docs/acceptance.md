@@ -86,6 +86,23 @@ one it replaced. The numbers above are its last recorded run on this source.
   closure and builds the client at run time. Whether it should instead ship
   prebuilt assets is a product decision recorded in the roadmap.
 
+## After The Release
+
+`v1.0.0` was tagged and released, and then observed rather than assumed:
+
+- The repository's own workflow caught the version mismatch (`22` in CI
+  against the engine's `24`) and a missing browser for the browser tests. Both
+  are fixed; the suite is green on `ubuntu-latest`, including the browser tests
+  and a build through the local Action.
+- The `site` branch was pointed at `v1.0.0` and a real GitHub Actions run
+  built and deployed the blog. The deployed document matches a local build of
+  the same content, down to the client chunk's content hash.
+- That run also showed what the release could not do: a workflow that passes
+  `content`, `config`, or `public` was ignored, because a keyword used as a
+  value is not its name. The runner found it in a minute of CI. The fix is on
+  `master` and is not in the `v1.0.0` tag, which the site does not exercise
+  because it uses the defaults.
+
 ## Known Gaps In The Engine
 
 - A macro layer is not possible: Eliscript macros are compilation-unit local,
