@@ -1,0 +1,98 @@
+;; Base-path and slug rules, ported from src/path-utils.js.
+;;
+;; The engine is judged against the JavaScript engine's output, so these steps
+;; are the same steps in the same order. Host string methods are used on
+;; purpose: a re-expressed equivalent would be a place for the two engines to
+;; disagree about a case nobody thought to test.
+
+(module saos.support.paths
+  (import "./host.eli" truthy?)
+
+  (defconst slash-code 47)
+  (defconst colon-code 58)
+
+  (defun starts-with? (text prefix) (js-call text :startsWith prefix))
+
+  (defun string-or-slash (value)
+    (if (truthy? value) (js-call value :toString) "/"))
+
+  (defun code-at (text index) (js-call text :charCodeAt index))
+
+  (defun lower-at (text index)
+    (js-call (js-call text :charAt index) :toLowerCase))
+
+  (defun letter-code? (code) (and (>= code 97) (<= code 122)))
+
+  (defun digit-code? (code) (and (>= code 48) (<= code 57)))
+
+  (defun scheme-code? (code)
+    (or (letter-code? code)
+        (digit-code? code)
+        (= code 43)
+        (= code 45)
+        (= code 46)))
+
+  ;; Strips every leading and trailing slash, exactly as the JavaScript
+  ;; pattern does, without depending on a regular expression.
+  (defun strip-slashes (text)
+    (let ((start 0)
+          (end (get text :length)))
+      (while (and (< start end) (= (code-at text start) slash-code))
+        (setq start (1+ start)))
+      (while (and (< start end) (= (code-at text (- end 1)) slash-code))
+        (setq end (- end 1)))
+      (js-call text :slice start end)))
+
+  (defun external-url? (value)
+    (let ((total (get value :length)))
+      (cond
+        ((= total 0) false)
+        ((= (js-call value :charAt 0) "#") t)
+        ((and (> total 1) (= (js-call value :slice 0 2) "//")) t)
+        ((not (letter-code? (code-at value 0))) false)
+        (t
+         (let ((index 1)
+               (found false))
+           (while (and (< index total) (not found))
+             (let ((code (code-at value index)))
+               (cond
+                 ((= code colon-code) (setq found t))
+                 ((scheme-code? code) (setq index (1+ index)))
+                 (t (setq index total)))))
+           found)))))
+
+  (defun normalize-base-path (value)
+    (let ((raw (js-call (string-or-slash value) :trim)))
+      (if (or (= raw "") (= raw "/"))
+          "/"
+        (str "/" (strip-slashes raw) "/"))))
+
+  ;; The slug rule is not the base-path rule: an empty slug becomes "//", and
+  ;; the JavaScript engine that defines this contract does the same.
+  (defun normalize-slug (value)
+    (str "/" (strip-slashes (js-call value :toString)) "/"))
+
+  (defun with-base-path (pathname base-path)
+    (let ((value (string-or-slash pathname))
+          (normalized (normalize-base-path base-path)))
+      (if (external-url? value)
+          value
+        (let ((path (if (starts-with? value "/") value (str "/" value))))
+          (if (= normalized "/")
+              path
+            (str (js-call normalized :slice 0 -1) path))))))
+
+  (defun strip-base-path (pathname base-path)
+    (let ((value (string-or-slash pathname))
+          (normalized (normalize-base-path base-path)))
+      (if (= normalized "/")
+          value
+        (let ((without-slash (js-call normalized :slice 0 -1)))
+          (cond
+            ((= value without-slash) "/")
+            ((starts-with? value normalized)
+             (str "/" (js-call value :slice (get normalized :length))))
+            (t value))))))
+
+  (export normalize-base-path normalize-slug with-base-path strip-base-path
+          external-url? starts-with? strip-slashes string-or-slash))

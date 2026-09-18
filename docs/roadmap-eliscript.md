@@ -54,6 +54,42 @@ These are not preferences. They hold for every stage.
 
 Weights sum to 100%. The whole roadmap is eight to nine commits.
 
+## Stage Scope Refinements
+
+Recorded because a stage claim must be exactly as wide as its evidence.
+
+**M1 excludes the rendered `html` key.** That key is produced by the
+Markdown and MDX pipeline, so it belongs to M2. M1 therefore proves the
+metadata model, and M2 closes `html` and turns the exclusion off. The parity
+tool counts and prints every deferred path on every run, so the exclusion
+cannot widen unnoticed. On `examples/basic` it reports six deferred paths: the
+same two posts appear in `posts`, `postsDescending`, and `postsBySlug`.
+
+## Findings
+
+Facts discovered while building the engine, recorded so they are not
+rediscovered at cost.
+
+| Finding                                                                                                                                                                                                                                   | Consequence                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An external project cannot import `eliscript/stdlib/*.eli`. The project builder refuses package sources with `Eliscript source import must be a relative .eli module`; only `eliscript/runtime/core/*.mjs` is reachable, as ordinary ESM. | The engine uses the compiled core runtime (`collection`, `sequence`, `order`, `text`, `regex`, and friends) plus its own modules. It cannot use `json`, `function`, `multimethod`, or the portable collection modules. M5's `ui/store.eli` must implement its own atom, because `stdlib/state/atom.eli` is unreachable. |
+| Eliscript truthiness is not JavaScript truthiness. Only `false`, `null`, and `undefined` are falsy, so `""` is truthy.                                                                                                                    | Every ported step that was `x \|\| fallback` or `x ? a : b` needs an explicit host predicate, provided by `engine/support/host.eli`. This was a real defect, not a hypothetical: the site's configured base path was silently replaced by an empty `--base` until the predicate existed.                                |
+| `js-nth` takes `(index, collection)`.                                                                                                                                                                                                     | Intended as `(nth index collection)`, not as a JavaScript-style `(collection, index)`.                                                                                                                                                                                                                                  |
+| `t` is the true literal. `true` is unbound. `false` and `nil` (which emits JavaScript `null`) are literals.                                                                                                                               | Style rule for engine sources.                                                                                                                                                                                                                                                                                          |
+| The portable `Atom` is unreachable from a package (first row), and the runtime's `compileRegex`/`regexFind` return Eliscript-shaped match values.                                                                                         | Parity-sensitive pattern work uses host `RegExp` objects through `js*`, so the two engines cannot disagree about a match shape.                                                                                                                                                                                         |
+
+## Publish Precondition
+
+Nothing in this roadmap publishes, so this blocks no stage. It must be
+resolved before any release that ships the M4 bundle.
+
+The Eliscript package is GPL-3.0-or-later. SAOS is 0PL. The M4 single-file
+bundle inlines the Eliscript runtime into a distributed Action artifact, which
+is distributing GPL-licensed code from a differently licensed project.
+Resolving it is a decision for the project owner: a separate grant for the
+runtime, a runtime dependency instead of an inlined bundle, or another
+arrangement. No stage decides this on its own.
+
 ## Commit And Push Policy
 
 - One commit per stage exit, plus at most one more inside M5.

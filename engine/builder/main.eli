@@ -1,0 +1,54 @@
+;; The builder entry point.
+;;
+;; M1 builds and writes the canonical model. The site output that consumes it
+;; arrives in M2 and M3; the Action entry point in M4 is this same program.
+
+(module saos.builder.main
+  (import "node:fs" mkdirSync writeFileSync renameSync)
+  (import "node:path" :as Path)
+  (import "../support/config.eli" load-site-config)
+  (import "../support/host.eli" truthy?)
+  (import "./content.eli" load-site-data)
+
+  (defconst argv (js* "process.argv"))
+  (defconst json-stringify (js* "JSON.stringify"))
+  (defconst console-error (js* "((message) => { console.error(message); })"))
+  (defconst set-exit-code (js* "((code) => { process.exitCode = code; })"))
+
+  (defun option-value (name fallback)
+    (let ((index 2)
+          (found fallback))
+      (while (< index (get argv :length))
+        (when (and (= (js-nth index argv) name)
+                   (< (+ index 1) (get argv :length)))
+          (setq found (js-nth (+ index 1) argv)))
+        (setq index (1+ index)))
+      found))
+
+  (defun write-model (target data)
+    (mkdirSync (Path/dirname target) (js-object :recursive t))
+    (let ((text (str (funcall json-stringify data nil 2) "\n")))
+      (writeFileSync (str target ".tmp") text)
+      (renameSync (str target ".tmp") target)))
+
+  (defasync main ()
+    (let* ((workspace (Path/resolve (option-value "--workspace" (js* "process.cwd()"))))
+           (config (option-value "--config" "saos.config.mjs"))
+           (base (option-value "--base" ""))
+           (model-out (option-value "--model-out" ""))
+           (content-dir (Path/resolve workspace (option-value "--content" "content/blog")))
+           (config-path (if (truthy? config) (Path/resolve workspace config) nil))
+           (site (await (load-site-config config-path base)))
+           (data (load-site-data content-dir site)))
+      (when (not (= model-out ""))
+        (write-model model-out data))
+      (print (str "SAOS model: "
+                  (get (get data :posts) :length)
+                  " post(s) from "
+                  content-dir))))
+
+  (js-call (main)
+           :catch
+           (lambda (error)
+             (funcall console-error (get error :message "unknown failure"))
+             (funcall set-exit-code 1))))

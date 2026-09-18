@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "sourceRoot": "engine",
+  "entry": "builder/main.eli",
+  "outDir": "dist/engine"
+}

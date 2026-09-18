@@ -1,0 +1,52 @@
+;; Post date parsing and display formatting, ported from src/blog-data.mjs.
+;;
+;; A date is validated once, stored as an ISO string, and displayed from that
+;; string. The display form keeps the captured day text as written, which is
+;; why the day is never converted to a number.
+
+(module saos.support.dates
+  (import "./host.eli" truthy?)
+
+  (defconst string-of (js* "String"))
+  (defconst number-of (js* "Number"))
+  (defconst is-nan (js* "Number.isNaN"))
+  (defconst iso-prefix (js* "/^(\\d{4})-(\\d{2})-(\\d{2})/"))
+  (defconst date-instance? (js* "((value) => value instanceof Date)"))
+  (defconst date-value (js* "((value) => new Date(value))"))
+  (defconst error-value (js* "((message) => new Error(message))"))
+
+  (defconst month-names
+    (js-array "January" "February" "March" "April" "May" "June" "July"
+              "August" "September" "October" "November" "December"))
+
+  (defconst month-offset 1)
+
+  (defun make-date (value) (funcall date-value value))
+
+  (defun invalid-date? (date)
+    (funcall is-nan (js-call date :getTime)))
+
+  (defun format-display-date (value)
+    (let* ((raw (if (funcall date-instance? value)
+                    (js-call value :toISOString)
+                  (funcall string-of value)))
+           (match (js-call iso-prefix :exec raw)))
+      (if (nil? match)
+          raw
+        (str (js-nth (- (funcall number-of (js-nth 2 match)) month-offset) month-names)
+             " " (js-nth 3 match) ", " (js-nth 1 match)))))
+
+  (defun parse-post-date (value relative-path)
+    (when (not (truthy? value))
+      (throw (funcall error-value
+                      (str relative-path ": frontmatter field \"date\" is required"))))
+    (let ((date (if (funcall date-instance? value)
+                    value
+                  (funcall date-value (funcall string-of value)))))
+      (when (invalid-date? date)
+        (throw (funcall error-value
+                        (str relative-path ": invalid frontmatter date \""
+                             (funcall string-of value) "\""))))
+      date))
+
+  (export format-display-date parse-post-date make-date invalid-date?))

@@ -1,0 +1,13 @@
+;; JavaScript truthiness, for the places the ported logic depends on it.
+;;
+;; Eliscript truthiness is not JavaScript truthiness: only `false`, `null`, and
+;; `undefined` are falsy, so an empty string is truthy here and falsy there.
+;; Every step that was originally `x || fallback` or `x ? a : b` must say so
+;; explicitly, or the two engines disagree on empty values.
+
+(module saos.support.host
+  (defconst boolean-of (js* "((value) => Boolean(value))"))
+
+  (defun truthy? (value) (funcall boolean-of value))
+
+  (export truthy?))

@@ -1,0 +1,107 @@
+;; Site configuration defaults and merging, ported from src/blog-data.mjs.
+;;
+;; The merge order is part of the contract: the engine must produce the same
+;; object, with the same keys, as the JavaScript engine it replaces.
+
+(module saos.support.config
+  (import "node:fs" existsSync)
+  (import "node:url" pathToFileURL)
+  (import "./host.eli" truthy?)
+  (import "./paths.eli" normalize-base-path)
+
+  (defconst object-assign (js* "Object.assign"))
+  (defconst now (js* "(() => Date.now())"))
+  (defconst import-module (js* "((url) => import(url))"))
+  (defconst object-has (js* "((object, key) => Object.prototype.hasOwnProperty.call(object, key))"))
+
+  (defun default-site-config ()
+    (js-object
+      :title "SAOS Blog"
+      :description "A source-first blog."
+      :siteUrl ""
+      :basePath "/"
+      :language "en"
+      :author
+      (js-object
+        :name ""
+        :summary ""
+        :avatar ""
+        :avatarAlt "Profile picture"
+        :link nil)
+      :comments nil
+      :footer
+      (js-object
+        :label "SAOS"
+        :href "https://github.com/liuchong/saos")
+      :rss (js-object)
+      :manifest
+      (js-object
+        :shortName "SAOS"
+        :backgroundColor "#ffffff"
+        :display "minimal-ui"
+        :icons (js-array))))
+
+  (defun has-own? (object key) (funcall object-has object key))
+
+  (defun is-disabled? (source key)
+    (and (has-own? source key) (= (get source key) false)))
+
+  (defun merge-site-config (raw)
+    (let* ((source (or raw (js-object)))
+           (defaults (default-site-config))
+           (merged (funcall object-assign (js-object) defaults source)))
+      (put merged
+           :author
+           (funcall object-assign
+                    (js-object)
+                    (get defaults :author)
+                    (if (truthy? (get source :author))
+                        (get source :author)
+                      (js-object))))
+      (put merged
+           :footer
+           (if (is-disabled? source :footer)
+               false
+             (funcall object-assign
+                      (js-object)
+                      (get defaults :footer)
+                      (if (truthy? (get source :footer))
+                          (get source :footer)
+                        (js-object)))))
+      (put merged
+           :rss
+           (if (is-disabled? source :rss)
+               false
+             (funcall object-assign
+                      (js-object)
+                      (if (truthy? (get source :rss)) (get source :rss) (js-object)))))
+      (put merged
+           :manifest
+           (if (is-disabled? source :manifest)
+               false
+             (funcall object-assign
+                      (js-object)
+                      (get defaults :manifest)
+                      (if (truthy? (get source :manifest))
+                          (get source :manifest)
+                        (js-object)))))
+      (put merged
+           :basePath
+           (normalize-base-path (if (truthy? (get source :basePath))
+                                    (get source :basePath)
+                                  "/")))
+      merged))
+
+  (defasync load-site-config (config-path base-path)
+    (let ((raw (js-object)))
+      (when (and (truthy? config-path) (existsSync config-path))
+        (let* ((url (str (get (pathToFileURL config-path) :href) "?" (funcall now)))
+               (loaded (await (funcall import-module url))))
+          (setq raw (if (truthy? (get loaded :default))
+                        (get loaded :default)
+                      (if (truthy? (get loaded :site)) (get loaded :site) (js-object))))))
+      (when (truthy? base-path)
+        (setq raw (funcall object-assign (js-object) raw (js-object :basePath base-path))))
+      (merge-site-config raw)))
+
+  (export default-site-config merge-site-config load-site-config))

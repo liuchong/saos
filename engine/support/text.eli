@@ -1,0 +1,38 @@
+;; Excerpt and escaping rules, ported from src/blog-data.mjs.
+;;
+;; The excerpt is derived from the Markdown source, not from rendered HTML,
+;; so it stays independent of the rendering engine that joins it in M2.
+
+(module saos.support.text
+  (defconst string-of (js* "String"))
+  (defconst fenced-block (js* "/```[\\s\\S]*?```/g"))
+  (defconst html-tag (js* "/<[^>]+>/g"))
+  (defconst markup (js* "/[#>*_`[\\]()!-]/g"))
+  (defconst whitespace-run (js* "/\\s+/g"))
+
+  (defconst excerpt-limit 160)
+  (defconst excerpt-kept 157)
+
+  (defun replace-all (text needle replacement)
+    (js-call text :replaceAll needle replacement))
+
+  (defun escape-html (value)
+    (let ((text (funcall string-of value)))
+      (replace-all
+        (replace-all
+          (replace-all
+            (replace-all (replace-all text "&" "&amp;") "<" "&lt;")
+            ">" "&gt;")
+          "\"" "&quot;")
+        "'" "&#39;")))
+
+  (defun create-excerpt (markdown)
+    (let* ((unfenced (js-call markdown :replace fenced-block ""))
+           (untagged (js-call unfenced :replace html-tag ""))
+           (plain (js-call untagged :replace markup ""))
+           (collapsed (js-call (js-call plain :replace whitespace-run " ") :trim)))
+      (if (> (get collapsed :length) excerpt-limit)
+          (str (js-call collapsed :slice 0 excerpt-kept) "...")
+        collapsed)))
+
+  (export escape-html create-excerpt))

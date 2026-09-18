@@ -1,0 +1,137 @@
+;; Content discovery and the canonical post model, ported from
+;; scripts/blog-data.mjs.
+;;
+;; The builder owns the filesystem. The renderer that consumes this model in
+;; M2 receives plain data and is given no filesystem or network authority.
+
+(module saos.builder.content
+  (import "node:fs" readdirSync readFileSync)
+  (import "node:path" :as Path)
+  (import "../support/fields.eli" parse-markdown-file)
+  (import "../support/host.eli" truthy?)
+  (import "../support/paths.eli" normalize-slug)
+  (import "../support/text.eli" create-excerpt escape-html)
+  (import "../support/dates.eli" format-display-date parse-post-date make-date)
+
+  (defconst markdown-file (js* "/\\.mdx?$/i"))
+  (defconst error-value (js* "((message) => new Error(message))"))
+  (defconst separator (get Path :sep))
+
+  (defun dot-entry? (name) (= (js-call name :charAt 0) "."))
+
+  (defun append-into (target values)
+    (let ((index 0))
+      (while (< index (get values :length))
+        (js-call target :push (js-nth index values))
+        (setq index (1+ index))))
+    target)
+
+  (defun walk-markdown-files (directory)
+    (let ((found (js-array))
+          (entries (readdirSync directory (js-object :withFileTypes t)))
+          (index 0))
+      (while (< index (get entries :length))
+        (let* ((entry (js-nth index entries))
+               (name (get entry :name)))
+          (unless (dot-entry? name)
+            (let ((entry-path (Path/join directory name)))
+              (if (js-call entry :isDirectory)
+                  (append-into found (walk-markdown-files entry-path))
+                (when (js-call markdown-file :test name)
+                  (js-call found :push entry-path))))))
+        (setq index (1+ index)))
+      (js-call found :sort)))
+
+  (defun default-slug (content-dir file-path)
+    (let* ((relative (Path/relative content-dir file-path))
+           (parsed (Path/parse relative))
+           (parts (if (= (get parsed :name) "index")
+                      (get parsed :dir)
+                    (Path/join (get parsed :dir) (get parsed :name)))))
+      (normalize-slug (js-call (js-call parts :split separator) :join "/"))))
+
+  (defun build-post (content-dir file-path)
+    (let* ((relative (Path/relative content-dir file-path))
+           (source (readFileSync file-path "utf8"))
+           (parsed (parse-markdown-file source))
+           (data (get parsed :data)))
+      (if (= (get data :draft) t)
+          nil
+        (let* ((slug (if (truthy? (get data :slug))
+                         (normalize-slug (get data :slug))
+                       (default-slug content-dir file-path)))
+               (title (if (truthy? (get data :title)) (get data :title) slug))
+               (date (parse-post-date (get data :date) relative))
+               (description (if (truthy? (get data :description))
+                                (get data :description)
+                              "")))
+          (js-object
+            :slug slug
+            :title title
+            :date (format-display-date date)
+            :dateISO (js-call date :toISOString)
+            :description description
+            :excerpt
+            (escape-html
+              (if (= description "")
+                  (create-excerpt (get parsed :content))
+                description)))))))
+
+  (defun compare-dates (left right)
+    (- (js-call (make-date (get left :dateISO)) :getTime)
+       (js-call (make-date (get right :dateISO)) :getTime)))
+
+  (defun collect-posts (content-dir)
+    (let ((files (walk-markdown-files content-dir))
+          (collected (js-array))
+          (index 0))
+      (while (< index (get files :length))
+        (let ((post (build-post content-dir (js-nth index files))))
+          (when (not (nil? post))
+            (js-call collected :push post)))
+        (setq index (1+ index)))
+      collected))
+
+  (defun link-neighbours (ascending)
+    (let ((seen (js-object))
+          (index 0))
+      (while (< index (get ascending :length))
+        (let* ((post (js-nth index ascending))
+               (slug (get post :slug)))
+          (when (funcall (js* "((object, key) => Object.prototype.hasOwnProperty.call(object, key))")
+                         seen slug)
+            (throw (funcall error-value (str "Duplicate post slug: " slug))))
+          (put seen slug t)
+          (put post
+               :previousSlug
+               (if (> index 0)
+                   (let ((previous (get (js-nth (- index 1) ascending) :slug)))
+                     (if (truthy? previous) previous nil))
+                 nil))
+          (put post
+               :nextSlug
+               (if (< (+ index 1) (get ascending :length))
+                   (let ((next (get (js-nth (+ index 1) ascending) :slug)))
+                     (if (truthy? next) next nil))
+                 nil)))
+        (setq index (1+ index))))
+    ascending)
+
+  (defun index-by-slug (ascending)
+    (let ((by-slug (js-object))
+          (index 0))
+      (while (< index (get ascending :length))
+        (put by-slug (get (js-nth index ascending) :slug) (js-nth index ascending))
+        (setq index (1+ index)))
+      by-slug))
+
+  (defun load-site-data (content-dir site)
+    (let* ((ascending (link-neighbours (js-call (collect-posts content-dir) :sort compare-dates)))
+           (descending (js-call (js-call ascending :slice) :reverse)))
+      (js-object
+        :site site
+        :posts ascending
+        :postsDescending descending
+        :postsBySlug (index-by-slug ascending))))
+
+  (export load-site-data walk-markdown-files default-slug))

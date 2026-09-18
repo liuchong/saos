@@ -1,0 +1,21 @@
+;; Front matter extraction, ported from src/blog-data.mjs.
+;;
+;; The delimiter pattern is the same one the JavaScript engine uses, including
+;; its tolerance for CRLF and for a document that ends with the fence.
+
+(module saos.support.fields
+  (import "yaml" parse)
+  (import "./host.eli" truthy?)
+
+  (defconst front-matter (js* "/^---\\r?\\n([\\s\\S]*?)\\r?\\n---\\r?\\n?/"))
+
+  (defun parse-markdown-file (source)
+    (let ((match (js-call front-matter :exec source)))
+      (if (nil? match)
+          (js-object :content source :data (js-object))
+        (js-object
+          :content (js-call source :slice (get (js-nth 0 match) :length))
+          :data (let ((parsed (funcall parse (js-nth 1 match))))
+                  (if (truthy? parsed) parsed (js-object)))))))
+
+  (export parse-markdown-file))

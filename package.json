@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.0",
+    "eliscript": "0.0.1",
     "playwright-core": "^1.63.0",
     "prettier": "^3.3.2"
   },
@@ -46,6 +47,7 @@
   },
   "scripts": {
     "build": "node scripts/cli.mjs build --workspace examples/basic",
+    "parity": "node tools/parity.mjs",
     "develop": "node scripts/cli.mjs develop --workspace examples/basic",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,md}\"",
