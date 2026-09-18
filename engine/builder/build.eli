@@ -1,0 +1,85 @@
+;; The build orchestration, shared by the command line and the Action.
+;;
+;; Both entry points differ only in where their options come from: argv for a
+;; person, environment variables for a workflow. Everything after that is one
+;; code path, so the Action cannot drift from the command line.
+
+(module saos.builder.build
+  (import "node:fs" mkdirSync renameSync writeFileSync)
+  (import "node:path" :as Path)
+  (import "node:url" fileURLToPath)
+  (import "../support/config.eli" load-site-config)
+  (import "../support/host.eli" truthy?)
+  (import "./content.eli" load-site-data)
+  (import "./site.eli"
+          build-client copy-content-assets copy-directory reset-output
+          write-feed write-web-manifest)
+
+  (defconst json-stringify (js* "JSON.stringify"))
+
+  ;; The compiled module sits at <root>/dist/engine/builder/build.mjs, so the
+  ;; package root is three directories up. The JavaScript engine derives its
+  ;; own root the same way.
+  (defun default-engine-root ()
+    (Path/resolve
+      (Path/dirname (fileURLToPath (js* "import.meta.url")))
+      ".."
+      ".."
+      ".."))
+
+  (defun write-model (target data)
+    (mkdirSync (Path/dirname target) (js-object :recursive t))
+    (let ((text (str (funcall json-stringify data nil 2) "\n")))
+      (writeFileSync (str target ".tmp") text)
+      (renameSync (str target ".tmp") target)))
+
+  (defun resolve-option (options key workspace fallback)
+    (let ((value (or (get options key) fallback)))
+      (if (truthy? value) (Path/resolve workspace value) nil)))
+
+  (defasync build-site (options site data)
+    (let ((engine-root (Path/resolve (get options :engineRoot)))
+          (output-dir (Path/resolve (get options :outputDir))))
+      (reset-output output-dir)
+      (await (build-client engine-root output-dir (get site :basePath)))
+      (copy-directory (Path/join engine-root "static") output-dir nil)
+      (when (truthy? (get options :publicDir))
+        (copy-directory (get options :publicDir) output-dir nil))
+      (copy-content-assets (get options :contentDir) output-dir)
+      (write-feed data output-dir)
+      (write-web-manifest data output-dir)))
+
+  (defasync build-workspace (options)
+    (let* ((workspace (Path/resolve (get options :workspace)))
+           (engine-root (Path/resolve (or (get options :engineRoot)
+                                          (default-engine-root))))
+           (content-dir (resolve-option options :content workspace "content/blog"))
+           (config (or (get options :config) "saos.config.mjs"))
+           (config-path (resolve-option options :config workspace "saos.config.mjs"))
+           (public-dir (resolve-option options :public workspace "static"))
+           (output-dir (Path/resolve workspace (or (get options :output) "dist")))
+           (base (or (get options :base) ""))
+           (model-out (or (get options :modelOut) ""))
+           (site (await (load-site-config config-path base)))
+           (data (await (load-site-data content-dir site))))
+      (when (truthy? config)
+        nil)
+      (when (not (= model-out ""))
+        (write-model model-out data))
+      (if (= (get options :modelOnly) t)
+          nil
+        (await (build-site
+                 (js-object
+                   :contentDir content-dir
+                   :engineRoot engine-root
+                   :outputDir output-dir
+                   :publicDir public-dir)
+                 site
+                 data)))
+      (js-object
+        :data data
+        :outputDir output-dir
+        :postCount (get (get data :posts) :length)
+        :workspace workspace)))
+
+  (export build-workspace default-engine-root))

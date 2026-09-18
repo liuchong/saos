@@ -133,11 +133,53 @@ arrangement. No stage decides this on its own.
 | M7        | 7%     | 0%         |
 | **Total** | 100%   | **5%**     |
 
+## Open Decision: How The Action Gets Its Client Assets
+
+M4 assumed the packaged Action would need no package install. Measured against
+the current engine, that assumption does not survive contact:
+
+| Fact                                                  | Evidence                                                                                                     |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Vite 8 depends on platform-native binaries            | `@rolldown/binding-darwin-arm64` and `@esbuild/*` are in its closure                                         |
+| A single file therefore cannot contain Vite           | `bun build --external vite` produces a 3.09 MB entry; without the exclusion it cannot be produced            |
+| The consumer's base path is baked into the client CSS | `url(/journal/assets/...)`; with `base: "./"` the same build emits `url(./...)` and both chunk hashes change |
+| The dependency closure is large                       | 82 MB, 234 packages, including the font packages that Vite needs to resolve the stylesheet                   |
+
+Two end states are possible, and they are different products.
+
+**A. Install and build at runtime.** The Action installs its dependency
+closure and the engine drives Vite, as it does on this branch. Client-asset
+byte parity stays complete and the documented fork workflow is unchanged
+(edit the CSS, and CI rebuilds it). Cost: every Action run pays the install.
+
+**B. Ship prebuilt client assets.** The engine copies assets built at package
+time and never runs Vite, so the Action installs nothing. The assets must be
+built with a base-independent output, which changes the emitted CSS and
+JavaScript hashes, so the parity instrument needs a narrow, counted exception
+for exactly those two files. Cost: a fork that edits `src/` must run the client
+build and commit the result, which changes a property the README promises
+("The source is the product").
+
+This is not a decision a stage may take on its own, because it changes a
+documented product property and the strength of the parity evidence. Recorded
+here with the measurements so it can be decided with them.
+
 ## Abort Conditions
 
 - M5 does not beat the baseline on its measured metrics: record the numbers and
   stop before M6. No unmeasured framework is kept.
 - A stage needs a publish to continue: stop and ask.
+
+### M4 Criteria
+
+| Criterion                                                               | State                                                                                                  |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| A single-file Node 24 bundle exists                                     | met                                                                                                    |
+| The bundle declares what it could not inline                            | met: `vite`, and running it in an empty directory fails only on that import                            |
+| The bundled entry and the compiled entry produce the same output tree   | met                                                                                                    |
+| The runtime contract is tested: outputs, defaults, and the failure path | met                                                                                                    |
+| `action.yml` runs the packaged entry                                    | outstanding, and it cannot land before M6: an engine that renders no pages would regress the Action    |
+| A real runner executes the Action through a local `uses:` reference     | outstanding: no runner is available in this environment, and the local emulation is not the same claim |
 
 ## Out Of Scope
 

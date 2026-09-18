@@ -1,0 +1,178 @@
+;; Action packaging.
+;;
+;; One generated Node 24 entry that runs without Emacs, without a package
+;; install of the engine's own dependencies, and with a source-bound digest
+;; manifest a reader can verify.
+;;
+;; Vite stays external. It depends on platform-specific native binaries that
+;; cannot be inlined into one file, so a packaging run records that fact in the
+;; artifact instead of producing a bundle that only looks self-contained.
+
+(module saos.tools.package
+  (import "node:child_process" spawnSync)
+  (import "node:crypto" createHash)
+  (import "node:fs"
+          copyFileSync existsSync mkdirSync readFileSync readdirSync renameSync
+          rmSync statSync writeFileSync)
+  (import "node:path" :as Path)
+  (import "../support/host.eli" truthy?)
+
+  (defconst argv (js* "process.argv"))
+  (defconst json-stringify (js* "JSON.stringify"))
+  (defconst byte-length (js* "((text) => Buffer.byteLength(text, 'utf8'))"))
+  (defconst console-error (js* "((message) => { console.error(message); })"))
+  (defconst set-exit-code (js* "((code) => { process.exitCode = code; })"))
+
+  (defconst artifact-format "saos-action-artifact")
+  (defconst artifact-version 1)
+  (defconst node-runtime "node24")
+  (defconst external-packages (js-array "vite"))
+
+  ;; Absolute host paths and credential shapes. These never belong in a
+  ;; distributed artifact.
+  (defconst forbidden-patterns
+    (js-array "/Users/" "/private/tmp/" "ghp_" "github_pat_" "-----BEGIN"))
+
+  (defun option-value (name fallback)
+    (let ((index 2)
+          (found fallback))
+      (while (< index (get argv :length))
+        (when (and (= (js-nth index argv) name)
+                   (< (+ index 1) (get argv :length)))
+          (setq found (js-nth (+ index 1) argv)))
+        (setq index (1+ index)))
+      found))
+
+  (defun sha256-of (file)
+    (let ((hash (createHash "sha256")))
+      (js-call hash :update (readFileSync file))
+      (js-call hash :digest "hex")))
+
+  (defun eliscript-source? (name) (js-call name :endsWith ".eli"))
+
+  (defun source-files (directory)
+    (let ((found (js-array)))
+      (let ((pending (js-array "")))
+        (while (> (get pending :length) 0)
+          (let* ((relative (js-call pending :pop))
+                 (absolute (if (= relative "")
+                               directory
+                             (Path/join directory relative)))
+                 (names (readdirSync absolute))
+                 (index 0))
+            (while (< index (get names :length))
+              (let ((name (js-nth index names)))
+                (let ((child (if (= relative "")
+                                 name
+                               (Path/join relative name))))
+                  (if (js-call (statSync (Path/join absolute name)) :isDirectory)
+                      (js-call pending :push child)
+                    (when (eliscript-source? name)
+                      (js-call found :push child)))))
+              (setq index (1+ index))))))
+      (js-call found :sort)))
+
+  (defun run-command (command arguments root)
+    (let ((result (spawnSync command arguments
+                             (js-object :encoding "utf8" :cwd root))))
+      (if (= (get result :status 1) 0)
+          nil
+        (progn
+          (funcall console-error (str "package: " command " exited with "
+                                      (get result :status 1)))
+          (funcall console-error (get result :stderr ""))
+          (throw (js-object :code "SAOS-PACKAGE-001"
+                            :message (str command " failed")))))
+      (get result :stdout "")))
+
+  (defun assert-clean (text label)
+    (let ((index 0))
+      (while (< index (get forbidden-patterns :length))
+        (let ((pattern (js-nth index forbidden-patterns)))
+          (when (js-call text :includes pattern)
+            (throw (js-object :code "SAOS-PACKAGE-002"
+                              :message (str label " contains " pattern)))))
+        (setq index (1+ index)))))
+
+  (defun bundle-action (root output-directory)
+    (let ((staging (Path/join root "dist" "action-bundle")))
+      (when (existsSync staging)
+        (rmSync staging (js-object :recursive t :force t)))
+      ;; Bun writes an external source map only beside an output directory, so
+      ;; the bundle is produced there and renamed into place.
+      (run-command
+        "bun"
+        (js-array "build"
+                  (Path/join root "dist" "engine" "action" "main.mjs")
+                  "--target=node"
+                  "--format=esm"
+                  "--sourcemap=external"
+                  "--external"
+                  "vite"
+                  "--outdir"
+                  staging)
+        root)
+      (let ((entry (Path/join output-directory "index.mjs"))
+            (source-map (Path/join output-directory "index.mjs.map")))
+        (renameSync (Path/join staging "main.js") entry)
+        (renameSync (Path/join staging "main.js.map") source-map)
+        (rmSync staging (js-object :recursive t :force t))
+        (writeFileSync
+          entry
+          (js-call (js-call (readFileSync entry "utf8") :split "main.js.map")
+                   :join "index.mjs.map"))
+        (js-object :entry entry :sourceMap source-map))))
+
+  (defun artifacts-of (root)
+    (let ((directory (Path/join root "dist" "action")))
+      (when (existsSync directory)
+        (rmSync directory (js-object :recursive t :force t)))
+      (mkdirSync directory (js-object :recursive t))
+      directory))
+
+  (defasync main ()
+    (let* ((root (Path/resolve (option-value "--root" (js* "process.cwd()"))))
+           (directory (artifacts-of root))
+           (bundled (bundle-action root directory))
+           (entry (get bundled :entry))
+           (source-map (get bundled :sourceMap))
+           (entry-text (readFileSync entry "utf8"))
+           (map-text (readFileSync source-map "utf8"))
+           (sources (source-files (Path/join root "engine")))
+           (digests (js-array))
+           (index 0))
+      (assert-clean entry-text "the Action bundle")
+      (assert-clean map-text "the bundle source map")
+      (while (< index (get sources :length))
+        (let ((relative (js-nth index sources)))
+          (js-call digests
+                   :push
+                   (js-object
+                     :path (Path/join "engine" relative)
+                     :sha256 (sha256-of (Path/join root "engine" relative)))))
+        (setq index (1+ index)))
+      (let ((artifact (js-object
+                        :format artifact-format
+                        :version artifact-version
+                        :runtime node-runtime
+                        :entry (Path/join "dist" "action" "index.mjs")
+                        :entrySha256 (sha256-of entry)
+                        :entryBytes (funcall byte-length entry-text)
+                        :sourceMap (Path/join "dist" "action" "index.mjs.map")
+                        :external external-packages
+                        :sources digests)))
+        (writeFileSync
+          (Path/join directory "artifact.json")
+          (str (funcall json-stringify artifact nil 2) "\n"))
+        (print (str "SAOS packaged "
+                    (get artifact :entryBytes)
+                    " bytes from "
+                    (get sources :length)
+                    " source file(s) into "
+                    (Path/relative root directory))))))
+
+  (js-call (main)
+           :catch
+           (lambda (error)
+             (funcall console-error (get error :message "unknown failure"))
+             (funcall set-exit-code 1))))

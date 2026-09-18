@@ -1,0 +1,52 @@
+;; The Action entry point.
+;;
+;; A workflow supplies options through the environment and reads results from
+;; GITHUB_OUTPUT. The names and the meaning of every input and output are the
+;; published contract of this Action and do not change here: the Action moved
+;; from a composite of shell steps to one program, and nothing else moved.
+
+(module saos.action.main
+  (import "node:fs" appendFileSync)
+  (import "node:path" :as Path)
+  (import "../builder/build.eli" build-workspace)
+  (import "../support/host.eli" truthy?)
+
+  (defconst environment (js* "process.env"))
+  (defconst console-error (js* "((message) => { console.error(message); })"))
+  (defconst set-exit-code (js* "((code) => { process.exitCode = code; })"))
+
+  (defun setting (name fallback)
+    (let ((value (get environment name)))
+      (if (truthy? value) value fallback)))
+
+  (defun write-output (name value)
+    (let ((target (get environment "GITHUB_OUTPUT")))
+      ;; Absent GITHUB_OUTPUT means the program was run outside a runner, which
+      ;; is how the contract test exercises it.
+      (when (truthy? target)
+        (appendFileSync target (str name "=" value "\n")))))
+
+  (defasync main ()
+    (let* ((workspace (setting "SAOS_WORKSPACE" (js* "process.cwd()")))
+           (result (await (build-workspace
+                            (js-object
+                              :workspace workspace
+                              :engineRoot (setting "GITHUB_ACTION_PATH"
+                                                   (Path/join workspace ".saos-engine"))
+                              :content (setting "SAOS_CONTENT" "content/blog")
+                              :config (setting "SAOS_CONFIG" "saos.config.mjs")
+                              :public (setting "SAOS_PUBLIC" "static")
+                              :output (setting "SAOS_OUTPUT" "dist")
+                              :base (setting "SAOS_BASE" ""))))))
+      (write-output "output-path" (get result :outputDir))
+      (write-output "post-count" (get result :postCount))
+      (print (str "SAOS built "
+                  (get result :postCount)
+                  " post(s) into "
+                  (Path/relative (get result :workspace) (get result :outputDir))))))
+
+  (js-call (main)
+           :catch
+           (lambda (error)
+             (funcall console-error (get error :message "unknown failure"))
+             (funcall set-exit-code 1))))

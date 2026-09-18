@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceRoot": "engine",
-  "entry": "builder/main.eli",
+  "entries": ["builder/main.eli", "action/main.eli", "tools/package.eli"],
   "outDir": "dist/engine"
 }

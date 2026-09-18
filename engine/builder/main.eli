@@ -1,23 +1,14 @@
-;; The builder entry point.
+;; The command line entry point.
 ;;
-;; The model stage is complete and the artifact stage writes everything the
-;; output tree contains except the rendered pages, which arrive with the UI
-;; port. `--model-only` stops after the model so the parity check can compare
-;; models without running a site build.
+;; Options come from argv and go to the shared orchestration. The Action entry
+;; point is a different front end over the same code.
 
 (module saos.builder.main
-  (import "node:fs" mkdirSync writeFileSync renameSync)
   (import "node:path" :as Path)
-  (import "node:url" fileURLToPath)
-  (import "../support/config.eli" load-site-config)
   (import "../support/host.eli" truthy?)
-  (import "./content.eli" load-site-data)
-  (import "./site.eli"
-          build-client copy-content-assets copy-directory reset-output
-          write-feed write-web-manifest)
+  (import "./build.eli" build-workspace default-engine-root)
 
   (defconst argv (js* "process.argv"))
-  (defconst json-stringify (js* "JSON.stringify"))
   (defconst console-error (js* "((message) => { console.error(message); })"))
   (defconst set-exit-code (js* "((code) => { process.exitCode = code; })"))
 
@@ -40,65 +31,25 @@
         (setq index (1+ index)))
       found))
 
-  ;; The compiled entry sits at <root>/dist/engine/builder/main.mjs, so the
-  ;; package root is three directories up. The JavaScript engine derives its
-  ;; own root the same way.
-  (defun default-engine-root ()
-    (Path/resolve
-      (Path/dirname (fileURLToPath (js* "import.meta.url")))
-      ".."
-      ".."
-      ".."))
-
-  (defun write-model (target data)
-    (mkdirSync (Path/dirname target) (js-object :recursive t))
-    (let ((text (str (funcall json-stringify data nil 2) "\n")))
-      (writeFileSync (str target ".tmp") text)
-      (renameSync (str target ".tmp") target)))
-
-  (defasync build-site (options site data)
-    (let ((engine-root (get options :engineRoot))
-          (output-dir (get options :outputDir))
-          (public-dir (get options :publicDir))
-          (content-dir (get options :contentDir)))
-      (reset-output output-dir)
-      (await (build-client engine-root output-dir (get site :basePath)))
-      (copy-directory (Path/join engine-root "static") output-dir nil)
-      (when (truthy? public-dir)
-        (copy-directory public-dir output-dir nil))
-      (copy-content-assets content-dir output-dir)
-      (write-feed data output-dir)
-      (write-web-manifest data output-dir)))
-
   (defasync main ()
     (let* ((workspace (Path/resolve (option-value "--workspace" (js* "process.cwd()"))))
-           (config (option-value "--config" "saos.config.mjs"))
-           (base (option-value "--base" ""))
-           (model-out (option-value "--model-out" ""))
-           (output (option-value "--output" "dist"))
-           (public (option-value "--public" "static"))
-           (engine-root (Path/resolve (option-value "--engine-root" (default-engine-root))))
-           (content-dir (Path/resolve workspace (option-value "--content" "content/blog")))
-           (config-path (if (truthy? config) (Path/resolve workspace config) nil))
-           (public-dir (if (truthy? public) (Path/resolve workspace public) nil))
-           (output-dir (Path/resolve workspace output))
-           (site (await (load-site-config config-path base)))
-           (data (await (load-site-data content-dir site))))
-      (when (not (= model-out ""))
-        (write-model model-out data))
+           (result (await (build-workspace
+                            (js-object
+                              :workspace workspace
+                              :engineRoot (option-value "--engine-root" (default-engine-root))
+                              :content (option-value "--content" "content/blog")
+                              :config (option-value "--config" "saos.config.mjs")
+                              :public (option-value "--public" "static")
+                              :output (option-value "--output" "dist")
+                              :base (option-value "--base" "")
+                              :modelOut (option-value "--model-out" "")
+                              :modelOnly (if (flag? "--model-only") t false))))))
       (if (flag? "--model-only")
-          (print (str "SAOS model: " (get (get data :posts) :length) " post(s)"))
-        (progn
-          (await (build-site
-                   (js-object
-                     :contentDir content-dir
-                     :engineRoot engine-root
-                     :outputDir output-dir
-                     :publicDir public-dir)
-                   site
-                   data))
-          (print (str "SAOS built " (get (get data :posts) :length) " post(s) into "
-                      (Path/relative workspace output-dir)))))))
+          (print (str "SAOS model: " (get result :postCount) " post(s)"))
+        (print (str "SAOS built "
+                    (get result :postCount)
+                    " post(s) into "
+                    (Path/relative workspace (get result :outputDir)))))))
 
   (js-call (main)
            :catch
