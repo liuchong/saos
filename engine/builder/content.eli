@@ -12,6 +12,8 @@
   (import "../support/paths.eli" normalize-slug)
   (import "../support/text.eli" create-excerpt escape-html)
   (import "../support/dates.eli" format-display-date parse-post-date make-date)
+  (import "../renderer/markdown.eli" markdown-to-html)
+  (import "../renderer/mdx.eli" mdx-to-html)
 
   (defconst markdown-file (js* "/\\.mdx?$/i"))
   (defconst error-value (js* "((message) => new Error(message))"))
@@ -50,7 +52,7 @@
                     (Path/join (get parsed :dir) (get parsed :name)))))
       (normalize-slug (js-call (js-call parts :split separator) :join "/"))))
 
-  (defun build-post (content-dir file-path)
+  (defasync build-post (content-dir file-path)
     (let* ((relative (Path/relative content-dir file-path))
            (source (readFileSync file-path "utf8"))
            (parsed (parse-markdown-file source))
@@ -75,18 +77,22 @@
             (escape-html
               (if (= description "")
                   (create-excerpt (get parsed :content))
-                description)))))))
+                description))
+            :html
+            (if (js-call file-path :endsWith ".mdx")
+                (await (mdx-to-html (get parsed :content)))
+              (await (markdown-to-html (get parsed :content)))))))))
 
   (defun compare-dates (left right)
     (- (js-call (make-date (get left :dateISO)) :getTime)
        (js-call (make-date (get right :dateISO)) :getTime)))
 
-  (defun collect-posts (content-dir)
+  (defasync collect-posts (content-dir)
     (let ((files (walk-markdown-files content-dir))
           (collected (js-array))
           (index 0))
       (while (< index (get files :length))
-        (let ((post (build-post content-dir (js-nth index files))))
+        (let ((post (await (build-post content-dir (js-nth index files)))))
           (when (not (nil? post))
             (js-call collected :push post)))
         (setq index (1+ index)))
@@ -125,8 +131,9 @@
         (setq index (1+ index)))
       by-slug))
 
-  (defun load-site-data (content-dir site)
-    (let* ((ascending (link-neighbours (js-call (collect-posts content-dir) :sort compare-dates)))
+  (defasync load-site-data (content-dir site)
+    (let* ((ascending (link-neighbours
+                        (js-call (await (collect-posts content-dir)) :sort compare-dates)))
            (descending (js-call (js-call ascending :slice) :reverse)))
       (js-object
         :site site

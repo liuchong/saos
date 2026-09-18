@@ -1,0 +1,52 @@
+;; The highlighted-code wrapper, ported from scripts/blog-data.mjs.
+;;
+;; Both the Markdown pipeline and the MDX pipeline use it, so it lives on its
+;; own. It is a unified plugin: the exported function returns the transformer,
+;; exactly as the JavaScript original does.
+
+(module saos.renderer.code-blocks
+  (import "../support/host.eli" absent? array?)
+
+  (defconst highlight-class "saos-highlight")
+
+  (defun has-class-name (node name)
+    (let* ((properties (if (absent? node) nil (get node :properties)))
+           (class-name (if (absent? properties) nil (get properties :className))))
+      (if (array? class-name)
+          (js-call class-name :includes name)
+        (= class-name name))))
+
+  (defun highlighted-block (child)
+    (js-object
+      :type "element"
+      :tagName "div"
+      :properties (js-object :className (js-array highlight-class))
+      :children (js-array child)))
+
+  (defun visit-code-blocks (node)
+    (when (array? (if (absent? node) nil (get node :children)))
+      (let ((children (get node :children))
+            (wrapped (js-array))
+            (index 0))
+        (while (< index (get children :length))
+          (let ((child (js-nth index children)))
+            (visit-code-blocks child)
+            (js-call wrapped
+                     :push
+                     (if (and (= (get child :type) "element")
+                              (= (get child :tagName) "pre"))
+                         (if (has-class-name node highlight-class)
+                             child
+                           (highlighted-block child))
+                       child)))
+          (setq index (1+ index)))
+        (put node :children wrapped)))
+    ;; A unified transformer returns the tree it transformed. The JavaScript
+    ;; original returns nothing and lets the tree pass through; returning the
+    ;; same tree says the same thing without relying on that convention.
+    node)
+
+  (defun wrap-code-blocks ()
+    (lambda (tree) (visit-code-blocks tree)))
+
+  (export wrap-code-blocks has-class-name))

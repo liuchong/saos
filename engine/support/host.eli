@@ -7,7 +7,14 @@
 
 (module saos.support.host
   (defconst boolean-of (js* "((value) => Boolean(value))"))
+  (defconst array-check (js* "Array.isArray"))
 
   (defun truthy? (value) (funcall boolean-of value))
 
-  (export truthy?))
+  ;; `nil?` tests exactly `null`. A property that does not exist reads as
+  ;; `undefined`, so the optional-chaining steps of the ported code need both.
+  (defun absent? (value) (or (nil? value) (= value (js* "undefined"))))
+
+  (defun array? (value) (funcall array-check value))
+
+  (export truthy? absent? array?))

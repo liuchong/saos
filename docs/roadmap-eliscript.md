@@ -58,6 +58,11 @@ Weights sum to 100%. The whole roadmap is eight to nine commits.
 
 Recorded because a stage claim must be exactly as wide as its evidence.
 
+**M2 folds its visual comparison into M3.** M2 renders post fragments, not
+pages: there is no document to look at until M3 composes the template, the
+client tags, and the page data. The visual check therefore belongs to M3,
+where a page exists to compare.
+
 **M1 excludes the rendered `html` key.** That key is produced by the
 Markdown and MDX pipeline, so it belongs to M2. M1 therefore proves the
 metadata model, and M2 closes `html` and turns the exclusion off. The parity

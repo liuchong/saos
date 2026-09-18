@@ -39,7 +39,7 @@
            (content-dir (Path/resolve workspace (option-value "--content" "content/blog")))
            (config-path (if (truthy? config) (Path/resolve workspace config) nil))
            (site (await (load-site-config config-path base)))
-           (data (load-site-data content-dir site)))
+           (data (await (load-site-data content-dir site))))
       (when (not (= model-out ""))
         (write-model model-out data))
       (print (str "SAOS model: "

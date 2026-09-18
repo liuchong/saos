@@ -28,24 +28,17 @@ const repositoryRoot = path.resolve(
   "..",
 )
 
-// The one field M1 does not port. Anything added here is a hole in the stage
-// evidence, so the count is printed on every run.
-const deferredKeys = new Set(["html"])
-
 const parseArguments = arguments_ => {
   const options = {
-    includeHtml: false,
     maxDifferences: 20,
     quiet: false,
-    workspace: "examples/basic",
+    workspaces: [],
   }
 
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index]
 
-    if (argument === "--include-html") {
-      options.includeHtml = true
-    } else if (argument === "--quiet") {
+    if (argument === "--quiet") {
       options.quiet = true
     } else if (argument === "--workspace" || argument === "--max-differences") {
       const value = arguments_[index + 1]
@@ -55,7 +48,7 @@ const parseArguments = arguments_ => {
       }
 
       if (argument === "--workspace") {
-        options.workspace = value
+        options.workspaces.push(value)
       } else {
         options.maxDifferences = Number(value)
       }
@@ -64,6 +57,10 @@ const parseArguments = arguments_ => {
     } else {
       throw new Error(`Unknown argument: ${argument}`)
     }
+  }
+
+  if (options.workspaces.length === 0) {
+    options.workspaces = ["examples/basic", "tests/fixtures/parity"]
   }
 
   return options
@@ -86,29 +83,10 @@ const describe = value => {
 const isPlainObject = value =>
   value !== null && typeof value === "object" && !Array.isArray(value)
 
-const isDeferred = (key, options) =>
-  !options.includeHtml && deferredKeys.has(key)
-
 const compareInto = (expected, actual, at, differences, options, counters) => {
   if (isPlainObject(expected) && isPlainObject(actual)) {
-    const expectedKeys = Object.keys(expected).filter(
-      key => !isDeferred(key, options),
-    )
-    const actualKeys = Object.keys(actual).filter(
-      key => !isDeferred(key, options),
-    )
-
-    for (const key of Object.keys(expected).filter(key =>
-      isDeferred(key, options),
-    )) {
-      counters.deferred += 1
-    }
-
-    for (const key of Object.keys(actual).filter(key =>
-      isDeferred(key, options),
-    )) {
-      counters.deferred += 1
-    }
+    const expectedKeys = Object.keys(expected)
+    const actualKeys = Object.keys(actual)
 
     for (const key of expectedKeys) {
       if (!actualKeys.includes(key)) {
@@ -360,41 +338,54 @@ const runDiagnostics = async ({ quiet }) => {
   return results
 }
 
-const main = async () => {
-  const options = parseArguments(process.argv.slice(2))
-  const workspaceRoot = path.resolve(repositoryRoot, options.workspace)
-  const differences = []
-  const counters = { deferred: 0 }
+const readMarkers = async workspaceRoot => {
+  try {
+    return JSON.parse(
+      await fs.readFile(
+        path.join(workspaceRoot, "expected-markers.json"),
+        "utf8",
+      ),
+    )
+  } catch {
+    return null
+  }
+}
 
-  // A stale build would compare the previous source, so build first.
-  const build = spawnSync(
-    path.join(repositoryRoot, "node_modules", ".bin", "eliscript-build"),
-    ["--config", "eliscript.json"],
-    { encoding: "utf8", cwd: repositoryRoot },
-  )
-
-  if (build.status !== 0) {
-    console.error(build.stdout.trim())
-    console.error(build.stderr.trim())
-    throw new Error(`eliscript-build exited with ${build.status}`)
+const checkMarkers = (markers, expected, actual) => {
+  if (markers === null) {
+    return null
   }
 
+  const render = model => model.posts.map(post => post.html).join("\n")
+  const javascript = render(expected)
+  const eliscript = render(actual)
+
+  return markers.map(marker => ({
+    marker,
+    missing: [
+      ...(javascript.includes(marker) ? [] : ["javascript"]),
+      ...(eliscript.includes(marker) ? [] : ["eliscript"]),
+    ],
+  }))
+}
+
+const checkWorkspace = async (options, workspace) => {
+  const workspaceRoot = path.resolve(repositoryRoot, workspace)
+  const differences = []
   const expected = await javascriptModel(workspaceRoot)
   const actual = await eliscriptModel(workspaceRoot)
 
-  compareInto(expected, actual, "$", differences, options, counters)
+  compareInto(expected, actual, "$", differences, options, {})
+
+  const markers = await readMarkers(workspaceRoot)
+  const coverage = checkMarkers(markers, expected, actual)
 
   if (!options.quiet) {
     console.log("")
     console.log("SAOS model parity")
-    console.log(`  workspace:   ${options.workspace}`)
+    console.log(`  workspace:   ${workspace}`)
     console.log(
       `  posts:       ${expected.posts.length} (javascript) / ${actual.posts.length} (eliscript)`,
-    )
-    console.log(
-      `  deferred:    ${counters.deferred} path(s) in [${[...deferredKeys].join(", ")}]${
-        options.includeHtml ? " (included by request)" : " excluded until M2"
-      }`,
     )
     console.log(`  differences: ${differences.length}`)
 
@@ -410,13 +401,52 @@ const main = async () => {
       )
     }
 
-    console.log("")
+    if (coverage !== null) {
+      const present = coverage.filter(entry => entry.missing.length === 0)
+
+      console.log(`  markers:     ${present.length}/${coverage.length}`)
+
+      for (const entry of coverage.filter(item => item.missing.length > 0)) {
+        console.log(
+          `    ${entry.marker} missing in ${entry.missing.join(", ")}`,
+        )
+      }
+    }
+  }
+
+  return { differences, coverage: coverage ?? [] }
+}
+
+const main = async () => {
+  const options = parseArguments(process.argv.slice(2))
+
+  // A stale build would compare the previous source, so build first.
+  const build = spawnSync(
+    path.join(repositoryRoot, "node_modules", ".bin", "eliscript-build"),
+    ["--config", "eliscript.json"],
+    { encoding: "utf8", cwd: repositoryRoot },
+  )
+
+  if (build.status !== 0) {
+    console.error(build.stdout.trim())
+    console.error(build.stderr.trim())
+    throw new Error(`eliscript-build exited with ${build.status}`)
+  }
+
+  let failed = 0
+
+  for (const workspace of options.workspaces) {
+    const result = await checkWorkspace(options, workspace)
+
+    failed += result.differences.length
+    failed += result.coverage.filter(entry => entry.missing.length > 0).length
   }
 
   const diagnostics = await runDiagnostics(options)
-  const failed = diagnostics.filter(result => !result.agree)
 
-  if (differences.length > 0 || failed.length > 0) {
+  failed += diagnostics.filter(result => !result.agree).length
+
+  if (failed > 0) {
     process.exitCode = 1
   }
 }

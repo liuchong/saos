@@ -1,0 +1,32 @@
+;; The MDX pipeline, ported from scripts/blog-data.mjs.
+;;
+;; MDX stays an npm dependency. The engine compiles the document to a function
+;; body, runs it against the React JSX runtime, and renders it to static
+;; markup with the same calls the JavaScript engine makes.
+
+(module saos.renderer.mdx
+  (import "@mdx-js/mdx" compile run)
+  (import "react/jsx-runtime" :as runtime)
+  (import "react-dom/server" renderToStaticMarkup)
+  (import "remark-gfm" :default remark-gfm)
+  (import "rehype-prism-plus" :default rehype-prism)
+  (import "./code-blocks.eli" wrap-code-blocks)
+
+  (defconst string-of (js* "String"))
+
+  (defconst compiler-options
+    (js-object
+      :outputFormat "function-body"
+      :remarkPlugins (js-array remark-gfm)
+      :rehypePlugins
+      (js-array
+        (js-array rehype-prism (js-object :ignoreMissing t))
+        wrap-code-blocks)))
+
+  (defasync mdx-to-html (mdx)
+    (let* ((code (funcall string-of (await (compile mdx compiler-options))))
+           (rendered (await (run code runtime))))
+      (renderToStaticMarkup
+        (js-call runtime :jsx (get rendered :default) (js-object)))))
+
+  (export mdx-to-html))

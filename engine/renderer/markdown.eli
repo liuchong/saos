@@ -1,0 +1,43 @@
+;; The Markdown pipeline, ported from scripts/blog-data.mjs.
+;;
+;; Every plugin is the same npm package the JavaScript engine uses, so the
+;; rendered HTML has one implementation behind it. Only the wiring and the
+;; wrapper transformer are Eliscript.
+
+(module saos.renderer.markdown
+  (import "unified" unified)
+  (import "remark-parse" :default remark-parse)
+  (import "remark-gfm" :default remark-gfm)
+  (import "remark-rehype" :default remark-rehype)
+  (import "rehype-raw" :default rehype-raw)
+  (import "rehype-prism-plus" :default rehype-prism)
+  (import "rehype-stringify" :default rehype-stringify)
+  (import "./code-blocks.eli" wrap-code-blocks)
+
+  (defconst string-of (js* "String"))
+
+  (defconst processor
+    (js-call
+      (js-call
+        (js-call
+          (js-call
+            (js-call
+              (js-call (js-call (unified) :use remark-parse) :use remark-gfm)
+              :use
+              remark-rehype
+              (js-object :allowDangerousHtml t))
+            :use
+            rehype-raw)
+          :use
+          rehype-prism
+          (js-object :ignoreMissing t))
+        :use
+        wrap-code-blocks)
+      :use
+      rehype-stringify
+      (js-object :allowDangerousHtml t)))
+
+  (defasync markdown-to-html (markdown)
+    (funcall string-of (await (js-call processor :process markdown))))
+
+  (export markdown-to-html))
