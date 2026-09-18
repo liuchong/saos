@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      - uses: liuchong/saos@v0.0.1
+      - uses: liuchong/saos@v1.0.0
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist

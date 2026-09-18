@@ -213,6 +213,17 @@ Four things stay open, and none of them is hidden inside a stage claim:
    macro libraries, no standard library for external projects, and no way to
    inline a native dependency into a single-file bundle.
 
+## Release
+
+The plan forbade publishing for the duration of the swap. The project owner
+lifted that at the end of it and asked for a major version, locked, published
+for testing: `package.json` moved from `0.0.1` to `1.0.0`, the branch was
+fast-forwarded to `master`, and `v1.0.0` was tagged and released. The engine
+dependency stays where it was: `eliscript` pinned to exactly `0.0.1`.
+
+The version the plan froze was the project's, not the engine's; that
+distinction is what this section exists to record.
+
 ## Abort Conditions
 
 - M5 does not beat the baseline on its measured metrics: record the numbers and

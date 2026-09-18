@@ -3,11 +3,12 @@
 What the Eliscript engine swap is accepted on, and what it is not.
 
 - Scope: the generator, the Action packaging chain, and the minimal React
-  wrapper, on branch `eliscript`, at version `0.0.1`.
+  wrapper. The swap was developed on branch `eliscript` at version `0.0.1` and
+  released as `1.0.0`; the engine dependency stays pinned at `0.0.1`.
 - Source identity: the commit that carries this file. Every number below was
   produced from that source, on macOS arm64, with Node 26 and Chromium 153.
-- Nothing here is a publication. See "Not Done" before reading any of it as a
-  release claim.
+- The release is a version bump and a tag, not a claim that a runner has
+  executed the Action. See "Not Done".
 
 ## Reproduce
 
@@ -63,14 +64,15 @@ one it replaced. The numbers above are its last recorded run on this source.
 
 ## Not Done
 
-- **No publication.** No tag, no GitHub Release, no `npm publish`, no
-  Marketplace change, no production deployment. Version `0.0.1` is unchanged
-  and no new tag exists.
-- **No real runner.** No GitHub Actions runner executed this Action, locally or
-  remotely: no runner is available in this environment. The Action's runtime
-  contract is exercised by running the entry point the runner would run, with
-  the environment the workflow would set. That is not the same claim, and it is
-  not presented as one.
+- **The release is unsigned by CI.** `v1.0.0` was tagged and released by hand
+  from a verified local build. No workflow produced it, and no Marketplace
+  listing change was made through the release UI.
+- **`0.0.1` was never published to npm and still is not.** The package is
+  `private`, so there is nothing to publish; the release is a Git tag.
+- **No real runner here.** The Action's runtime contract is exercised by
+  running the entry point a runner would run, with the environment a workflow
+  would set. A run on GitHub's runners is a separate observation and is
+  recorded where it happens, not here.
 - **Development mode is configured, not verified.** The `.eli` refresh boundary
   and the client entry's development branch exist and no test starts a
   development server.
