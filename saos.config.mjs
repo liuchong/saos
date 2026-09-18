@@ -27,10 +27,7 @@ export default {
     language: "zh-CN",
   },
   footer: {
-    links: [
-      { label: "Vite", href: "https://vite.dev" },
-      { label: "SAOS", href: "https://github.com/liuchong/saos" },
-    ],
+    links: [{ label: "SAOS", href: "https://github.com/liuchong/saos" }],
   },
   rss: {
     title: "黑貓博客 RSS Feed",
