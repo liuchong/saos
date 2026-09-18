@@ -1,0 +1,207 @@
+;; The page shell, ported from src/App.jsx.
+
+(module saos.site.app
+  (import "../support/host.eli" or-value truthy?)
+  (import "../support/paths.eli" with-base-path strip-base-path)
+  (import "../ui/element.eli" h h-keyed)
+  (import "./components.eli" Layout Bio Seo GiscusComments)
+
+  (defconst pre-wrap-style
+    (js-object
+      :display "flex"
+      :flexWrap "wrap"
+      :justifyContent "space-between"
+      :listStyle "none"
+      :padding 0))
+
+  ;; The link's own href is written before the caller's remaining attributes,
+  ;; which is the order a JSX attribute followed by a spread produces.
+  (defun Link (props)
+    (let ((attributes (js-object
+                        :href (with-base-path (get props :to)
+                                              (get props :basePath)))))
+      (let ((keys (js-call (js* "Object") :entries props))
+            (index 0))
+        (while (< index (get keys :length))
+          (let* ((pair (js-nth index keys))
+                 (key (js-nth 0 pair)))
+            (when (and (not (= key "basePath")) (not (= key "to")))
+              (put attributes key (js-nth 1 pair))))
+          (setq index (1+ index))))
+      (h "a" attributes (get props :children))))
+
+  (defun normalize-pathname (pathname base-path)
+    (let* ((without-base (strip-base-path pathname base-path))
+           (without-index (js-call without-base :replace (js* "/index\\.html$/") "")))
+      (if (or (not (truthy? without-base)) (= without-base "/index.html"))
+          "/"
+        (if (js-call with-base-slash? without-index)
+            without-index
+          (str without-index "/")))))
+
+  (defun with-base-slash? (value) (js-call value :endsWith "/"))
+
+  (defun resolve-page (pathname site-data)
+    (let* ((site (get site-data :site))
+           (normalized (normalize-pathname pathname (get site :basePath))))
+      (if (= normalized "/")
+          (js-object
+            :type "home"
+            :pathname "/"
+            :site site
+            :posts (get site-data :postsDescending)
+            :seo (js-object
+                   :title "All posts"
+                   :description (get site :description)))
+        (let* ((posts (get site-data :posts))
+               (index 0)
+               (found nil))
+          (while (and (< index (get posts :length)) (not (truthy? found)))
+            (when (= (get (js-nth index posts) :slug) normalized)
+              (setq found (js-nth index posts)))
+            (setq index (1+ index)))
+          (if (truthy? found)
+              (js-object
+                :type "post"
+                :pathname normalized
+                :site site
+                :post found
+                :previous (or (get (get site-data :postsBySlug)
+                                   (get found :previousSlug))
+                              nil)
+                :next (or (get (get site-data :postsBySlug) (get found :nextSlug))
+                          nil)
+                :seo (js-object
+                       :title (get found :title)
+                       :description (or-value (get found :description)
+                                              (get found :excerpt))))
+            (js-object
+              :type "not-found"
+              :pathname normalized
+              :site site
+              :seo (js-object
+                     :title "404: Not Found"
+                     :description (get site :description))))))))
+
+  (defun BlogIndex (props)
+    (let* ((page (get props :page))
+           (site (get page :site))
+           (posts (get page :posts))
+           (site-title (or-value (get site :title) "Title")))
+      (if (= (get posts :length) 0)
+          (h Layout
+             (js-object :pathname (get page :pathname) :site site :title site-title)
+             (h Bio (js-object :author (get site :author) :basePath (get site :basePath)))
+             (h "p" nil "No blog posts found."))
+        (let ((items (js-array))
+              (index 0))
+          (while (< index (get posts :length))
+            (let* ((post (js-nth index posts))
+                   (title (or-value (get post :title) (get post :slug))))
+              (js-call items
+                       :push
+                       (h-keyed "li"
+                                (js-object)
+                                (get post :slug)
+                          (h "article"
+                             (js-object
+                               :className "post-list-item"
+                               :itemScope t
+                               :itemType "http://schema.org/Article")
+                             (h "header" nil
+                                (h "h2" nil
+                                   (h Link
+                                      (js-object
+                                        :basePath (get site :basePath)
+                                        :to (get post :slug)
+                                        :itemProp "url")
+                                      (h "span" (js-object :itemProp "headline") title)))
+                                (h "small" nil (get post :date)))
+                             (h "section" nil
+                                (h "p"
+                                   (js-object
+                                     :dangerouslySetInnerHTML
+                                     (js-object
+                                       :__html (or-value (get post :description)
+                                                         (get post :excerpt)))
+                                     :itemProp "description")))))))
+              (setq index (1+ index)))
+          (h Layout
+             (js-object :pathname (get page :pathname) :site site :title site-title)
+             (h Bio (js-object :author (get site :author) :basePath (get site :basePath)))
+             (h "ol" (js-object :style (js-object :listStyle "none")) items))))))
+
+  (defun BlogPost (props)
+    (let* ((page (get props :page))
+           (site (get page :site))
+           (post (get page :post))
+           (site-title (or-value (get site :title) "Title")))
+      (h Layout
+         (js-object :pathname (get page :pathname) :site site :title site-title)
+         (h "article"
+            (js-object
+              :className "blog-post"
+              :itemScope t
+              :itemType "http://schema.org/Article")
+            (h "header" nil
+               (h "h1" (js-object :itemProp "headline") (get post :title))
+               (h "p" nil (get post :date)))
+            (h "section"
+               (js-object
+                 :dangerouslySetInnerHTML (js-object :__html (get post :html))
+                 :itemProp "articleBody"))
+            (h "hr" nil)
+            (h GiscusComments (js-object :config (get site :comments)))
+            (h "footer" nil
+               (h Bio (js-object :author (get site :author) :basePath (get site :basePath)))))
+         (h "nav"
+            (js-object :className "blog-post-nav")
+            (h "ul"
+               (js-object :style pre-wrap-style)
+               (h "li" nil
+                  (if (truthy? (get page :previous))
+                      (h Link
+                         (js-object
+                           :basePath (get site :basePath)
+                           :to (get (get page :previous) :slug)
+                           :rel "prev")
+                         "← "
+                         (get (get page :previous) :title))
+                    nil))
+               (h "li" nil
+                  (if (truthy? (get page :next))
+                      (h Link
+                         (js-object
+                           :basePath (get site :basePath)
+                           :to (get (get page :next) :slug)
+                           :rel "next")
+                         (get (get page :next) :title)
+                         " →")
+                    nil)))))))
+
+  (defun NotFoundPage (props)
+    (let* ((page (get props :page))
+           (site (get page :site))
+           (site-title (or-value (get site :title) "Title")))
+      (h Layout
+         (js-object :pathname (get page :pathname) :site site :title site-title)
+         (h "h1" nil "404: Not Found")
+         (h "p" nil "You just hit a route that doesn't exist... the sadness."))))
+
+  (defun App (props)
+    (let ((page (get props :page)))
+      (cond
+        ((= (get page :type) "post") (h BlogPost (js-object :page page)))
+        ((= (get page :type) "not-found") (h NotFoundPage (js-object :page page)))
+        (t (h BlogIndex (js-object :page page))))))
+
+  (defun PageHead (props)
+    (let ((page (get props :page)))
+      (h Seo
+         (js-object
+           :defaultTitle (get (get page :site) :title)
+           :description (or-value (get (get page :seo) :description)
+                                  (get (get page :site) :description))
+           :title (get (get page :seo) :title)))))
+
+  (export App PageHead Link resolve-page normalize-pathname))

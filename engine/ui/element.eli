@@ -10,6 +10,7 @@
 
 (module saos.ui.element
   (import "react/jsx-runtime" jsx jsxs Fragment)
+  (import "../support/host.eli" array?)
 
   (defun merge-props (props children)
     (if (= (length children) 0)
@@ -20,9 +21,17 @@
         (if (= (length children) 1) (js-nth 0 children) children))))
 
   ;; `h` is the whole surface: a type, props or nil, and children.
+  ;;
+  ;; `jsxs` is the static variant: it tells React the children list is fixed,
+  ;; which is why a document rendered through it carries no key warnings. A
+  ;; single array child is a list of children the caller already built, so it
+  ;; takes the same path.
   (defun h (type props &rest children)
     (let ((resolved (merge-props props children)))
-      (if (> (length children) 1) (jsxs type resolved) (jsx type resolved))))
+      (if (or (> (length children) 1)
+              (and (= (length children) 1) (array? (js-nth 0 children))))
+          (jsxs type resolved)
+        (jsx type resolved))))
 
   ;; The automatic runtime takes a key as a third argument rather than as a
   ;; prop, and a list needs one.
@@ -33,9 +42,18 @@
         (jsx type resolved key))))
 
   (defun fragment (&rest children)
-    (jsx Fragment (merge-props nil children)))
+    (let ((resolved (merge-props nil children)))
+      (if (> (length children) 1)
+          (jsxs Fragment resolved)
+        (jsx Fragment resolved))))
+
+  (defun fragment-keyed (key &rest children)
+    (let ((resolved (merge-props nil children)))
+      (if (> (length children) 1)
+          (jsxs Fragment resolved key)
+        (jsx Fragment resolved key))))
 
   (defun join-children (&rest values)
     (if (= (length values) 1) (js-nth 0 values) values))
 
-  (export h h-keyed fragment merge-props join-children))
+  (export h h-keyed fragment fragment-keyed merge-props join-children))

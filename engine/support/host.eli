@@ -11,10 +11,15 @@
 
   (defun truthy? (value) (funcall boolean-of value))
 
+  ;; JavaScript's `||` takes the right side for any falsy left side, and an
+  ;; empty string is one of those. Eliscript's `or` does not: only false, null,
+  ;; and undefined are falsy here. Every ported `a || b` goes through this.
+  (defun or-value (left right) (if (truthy? left) left right))
+
   ;; `nil?` tests exactly `null`. A property that does not exist reads as
   ;; `undefined`, so the optional-chaining steps of the ported code need both.
   (defun absent? (value) (or (nil? value) (= value (js* "undefined"))))
 
   (defun array? (value) (funcall array-check value))
 
-  (export truthy? absent? array?))
+  (export truthy? absent? array? or-value))

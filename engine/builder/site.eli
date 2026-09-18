@@ -11,6 +11,7 @@
           writeFileSync)
   (import "node:path" :as Path)
   (import "vite" build)
+  (import "./pages.eli" client-tags read-manifest write-pages)
   (import "../support/host.eli" truthy?)
   (import "../support/paths.eli" with-base-path)
   (import "../support/text.eli" replace-all)
@@ -138,10 +139,7 @@
                  :manifest t
                  :rollupOptions
                  (js-object
-                   :input (Path/join engine-root "src" "entry-client.jsx"))))))
-    ;; The manifest is read for the page tags in the UI stage; the JavaScript
-    ;; engine deletes it here too, so the output tree matches.
-    (rmSync (Path/join output-dir ".vite") (js-object :recursive t :force t)))
+                   :input (Path/join engine-root "engine" "site" "entry-client.eli")))))))
 
   (export reset-output copy-directory copy-content-assets write-feed
           write-web-manifest build-client))

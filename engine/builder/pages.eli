@@ -1,0 +1,190 @@
+;; Page composition, ported from scripts/build.mjs.
+;;
+;; The page data, the client tags read from the Vite manifest, and the
+;; template substitution that turns a rendered tree into a document.
+
+(module saos.builder.pages
+  (import "node:fs" copyFileSync mkdirSync readFileSync writeFileSync)
+  (import "node:path" :as Path)
+  (import "../site/app.eli" App PageHead)
+  (import "../support/host.eli" or-value truthy?)
+  (import "../support/paths.eli" strip-slashes with-base-path)
+  (import "../ui/element.eli" h)
+  (import "../ui/server.eli" document-markup static-markup)
+
+  (defconst string-of (js* "String"))
+  (defconst json-stringify (js* "JSON.stringify"))
+
+  ;; The client entry is named for its source path, which is what the Vite
+  ;; manifest keys an entry by.
+  (defconst client-entry "engine/site/entry-client.eli")
+
+  ;; The template carries the module script tag of whichever engine built the
+  ;; site, so the anchor is the tag itself rather than one path.
+  (defconst script-tag (js* "/<script type=\"module\" src=\"[^\"]*\"><\\/script>/"))
+
+  (defun replace-all (text needle replacement)
+    (js-call text :replaceAll needle replacement))
+
+  (defun escape-xml (value)
+    (let ((text (funcall string-of value)))
+      (replace-all
+        (replace-all
+          (replace-all
+            (replace-all (replace-all text "&" "&amp;") "<" "&lt;")
+            ">" "&gt;")
+          "\"" "&quot;")
+        "'" "&apos;")))
+
+  (defun escape-attribute (value)
+    (replace-all (escape-xml value) "`" "&#96;"))
+
+  (defun serialize-for-script (value)
+    (replace-all
+      (replace-all
+        (replace-all (funcall json-stringify value) "<" "\\u003c")
+        "\u2028"
+        "\\u2028")
+      "\u2029"
+      "\\u2029"))
+
+  ;; --------------------------------------------------------------- page data
+
+  (defun list-post (post)
+    (js-object
+      :slug (get post :slug)
+      :title (get post :title)
+      :date (get post :date)
+      :dateISO (get post :dateISO)
+      :description (get post :description)
+      :excerpt (get post :excerpt)))
+
+  (defun linked-post (post)
+    (if (truthy? post)
+        (js-object :slug (get post :slug) :title (get post :title))
+      nil))
+
+  (defun build-page-data (site-data)
+    (let* ((site (get site-data :site))
+           (by-slug (get site-data :postsBySlug))
+           (home (js-object
+                   :type "home"
+                   :pathname "/"
+                   :site site
+                   :posts (js-call (get site-data :postsDescending) :map list-post)
+                   :seo (js-object
+                          :title "All posts"
+                          :description (get site :description))))
+           (pages (js-array home))
+           (source (get site-data :posts))
+           (index 0))
+      (while (< index (get source :length))
+        (let* ((post (js-nth index source)))
+          (js-call pages
+                   :push
+                   (js-object
+                     :type "post"
+                     :pathname (get post :slug)
+                     :site site
+                     :post post
+                     :previous (linked-post (get by-slug (get post :previousSlug)))
+                     :next (linked-post (get by-slug (get post :nextSlug)))
+                     :seo (js-object
+                            :title (get post :title)
+                            :description (or-value (get post :description)
+                                                  (get post :excerpt))))))
+        (setq index (1+ index)))
+      (js-call pages
+               :push
+               (js-object
+                 :type "not-found"
+                 :pathname "/404/"
+                 :site site
+                 :seo (js-object
+                        :title "404: Not Found"
+                        :description (get site :description))))
+      pages))
+
+  (defun output-file (output-dir page)
+    (if (= (get page :type) "home")
+        (Path/join output-dir "index.html")
+      (let ((pathname (if (= (get page :type) "not-found")
+                          "404"
+                        (get page :pathname))))
+        (Path/join output-dir (strip-slashes pathname) "index.html"))))
+
+  ;; ------------------------------------------------------------- composition
+
+  (defun client-tags (manifest base-path)
+    (let ((entry (get manifest client-entry)))
+      (when (not (truthy? entry))
+        (throw (js-object
+                 :code "SAOS-PAGES-001"
+                 :message (str "Vite manifest is missing " client-entry))))
+      (let ((styles (js-call (js-call (or (get entry :css) (js-array)) :map
+                                      (lambda (file)
+                                        (str "<link rel=\"stylesheet\" href=\""
+                                             (with-base-path file base-path) "\">")))
+                             :join "\n    ")))
+        (js-object
+          :script (str "<script type=\"module\" src=\""
+                       (with-base-path (get entry :file) base-path)
+                       "\"></script>")
+          :styles styles))))
+
+  (defun render-page (page)
+    (js-object
+      :head (static-markup (h PageHead (js-object :page page)))
+      :html (document-markup (h App (js-object :page page)))))
+
+  (defun render-html (rendered page template tags)
+    (let ((page-data-script (str "window.__SAOS_PAGE_DATA__ = "
+                                 (serialize-for-script page))))
+      (js-call
+        (js-call
+          (js-call
+            (js-call
+              (js-call template
+                       :replace
+                       "<html lang=\"en\">"
+                       (str "<html lang=\"" (escape-attribute (get (get page :site) :language)) "\">"))
+              :replace
+              "<!--blog-head-->"
+              (js-call (js-call (js-array (get tags :styles) (get rendered :head))
+                                :filter
+                                (js* "Boolean"))
+                       :join
+                       "\n    "))
+            :replace
+            "<!--blog-html-->"
+            (get rendered :html))
+          :replace
+          "window.__SAOS_PAGE_DATA__ = null"
+          page-data-script)
+        :replace
+        script-tag
+        (get tags :script))))
+
+  ;; ----------------------------------------------------------------- output
+
+  (defun read-manifest (path)
+    (funcall (js* "JSON.parse") (readFileSync path "utf8")))
+
+  (defun write-pages (options site-data)
+    (let* ((output-dir (get options :outputDir))
+           (template (readFileSync (get options :template) "utf8"))
+           (tags (get options :tags))
+           (pages (build-page-data site-data))
+           (index 0))
+      (while (< index (get pages :length))
+        (let* ((page (js-nth index pages))
+               (file (output-file output-dir page)))
+          (mkdirSync (Path/dirname file) (js-object :recursive t))
+          (writeFileSync file (render-html (render-page page) page template tags)))
+        (setq index (1+ index)))
+      (copyFileSync (Path/join output-dir "404" "index.html")
+                    (Path/join output-dir "404.html"))
+      nil))
+
+  (export build-page-data write-pages client-tags render-page output-file
+          read-manifest))

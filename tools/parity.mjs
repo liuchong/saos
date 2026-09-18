@@ -418,6 +418,21 @@ const checkWorkspace = async (options, workspace) => {
   return { differences, coverage: coverage ?? [] }
 }
 
+const hashPattern = () =>
+  /-[A-Za-z0-9_-]{8}\.(js|css|woff2?|png|ico|svg|avif|webp)/g
+
+const withoutHashes = text => text.replace(hashPattern(), "-CONTENTHASH.$1")
+
+// A content hash is part of a built asset's name, so two engines that bundle
+// their own sources produce differently named files for the same role.
+const withoutNameHash = file =>
+  file.replace(
+    /-[A-Za-z0-9_-]{8}\.(js|css|woff2?|png|ico|svg|avif|webp)$/,
+    "-CONTENTHASH.$1",
+  )
+
+const isClientChunk = file => /^assets\/[^/]+\.js$/.test(file)
+
 const walkTree = async root => {
   const found = []
   const pending = [""]
@@ -470,9 +485,18 @@ const checkArtifacts = async (options, workspace) => {
     const javascriptFiles = await walkTree(javascriptDir)
     const eliscriptFiles = await walkTree(eliscriptDir)
     const differences = []
+    const normalized = []
+    const engineSpecific = []
+    let identical = 0
 
     for (const file of eliscriptFiles) {
-      if (!javascriptFiles.includes(file)) {
+      const counterpart = javascriptFiles.find(
+        candidate =>
+          candidate === file ||
+          withoutNameHash(candidate) === withoutNameHash(file),
+      )
+
+      if (counterpart === undefined) {
         differences.push({
           file,
           reason: "the javascript engine does not produce it",
@@ -481,19 +505,45 @@ const checkArtifacts = async (options, workspace) => {
       }
 
       const [left, right] = await Promise.all([
-        fs.readFile(path.join(javascriptDir, file)),
+        fs.readFile(path.join(javascriptDir, counterpart)),
         fs.readFile(path.join(eliscriptDir, file)),
       ])
 
-      if (!left.equals(right)) {
-        differences.push({ file, reason: "bytes differ" })
+      if (left.equals(right)) {
+        identical += 1
+        continue
       }
+
+      if (isClientChunk(file)) {
+        // Each engine compiles its own sources, so the client chunk is expected
+        // to differ. Its size is reported so the difference stays visible.
+        engineSpecific.push({ file, bytes: right.length })
+        continue
+      }
+
+      if (
+        withoutHashes(left.toString("utf8")) ===
+        withoutHashes(right.toString("utf8"))
+      ) {
+        normalized.push(file)
+        continue
+      }
+
+      differences.push({ file, reason: "bytes differ" })
     }
 
     return {
       compared: eliscriptFiles.length,
       differences,
-      notYet: javascriptFiles.filter(file => !eliscriptFiles.includes(file)),
+      engineSpecific,
+      identical,
+      normalized,
+      notYet: javascriptFiles.filter(
+        file =>
+          !eliscriptFiles.some(
+            candidate => withoutNameHash(candidate) === withoutNameHash(file),
+          ),
+      ),
     }
   } finally {
     await Promise.all([
@@ -533,7 +583,15 @@ const main = async () => {
       console.log("SAOS artifact parity")
       console.log(`  workspace:   ${workspace}`)
       console.log(
-        `  identical:   ${artifacts.compared - artifacts.differences.length}/${artifacts.compared} file(s)`,
+        `  identical:   ${artifacts.identical}/${artifacts.compared} file(s) byte for byte`,
+      )
+      console.log(
+        `  normalized:  ${artifacts.normalized.length} document(s) equal after content hashes`,
+      )
+      console.log(
+        `  own bundle:  ${artifacts.engineSpecific
+          .map(entry => `${entry.file} (${entry.bytes} B)`)
+          .join(", ")}`,
       )
 
       for (const difference of artifacts.differences) {

@@ -1,0 +1,169 @@
+;; The site's presentation components, ported from src/components and
+;; src/App.jsx.
+;;
+;; Every element goes through `h`. A component call and an element differ only
+;; in that wrapper, and calling a component directly would run it inside its
+;; parent's render.
+
+(module saos.site.components
+  (import "react" useEffect useRef)
+  (import "../support/host.eli" or-value truthy?)
+  (import "../support/paths.eli" with-base-path)
+  (import "../ui/element.eli" h fragment fragment-keyed)
+
+  ;; ------------------------------------------------------------------- seo
+
+  (defun Seo (props)
+    (let* ((default-title (get props :defaultTitle))
+           (title (get props :title))
+           (description (get props :description))
+           (full-title (if (truthy? default-title)
+                           (str title " | " default-title)
+                         title)))
+      (fragment
+        (h "title" nil full-title)
+        (h "meta" (js-object :name "description" :content description))
+        (h "meta" (js-object :property "og:title" :content title))
+        (h "meta" (js-object :property "og:description" :content description))
+        (h "meta" (js-object :property "og:type" :content "website"))
+        (h "meta" (js-object :name "twitter:card" :content "summary"))
+        (h "meta" (js-object :name "twitter:title" :content title))
+        (h "meta" (js-object :name "twitter:description" :content description)))))
+
+  ;; ------------------------------------------------------------------- bio
+
+  (defun Bio (props)
+    (let* ((author (get props :author))
+           (base-path (get props :basePath))
+           (link (if (truthy? author) (get author :link) nil))
+           (children (js-array)))
+      (when (and (truthy? author) (truthy? (get author :avatar)))
+        (js-call children
+                 :push
+                 (h "img"
+                    (js-object
+                      :className "bio-avatar"
+                      :src (with-base-path (get author :avatar) base-path)
+                      :width 50
+                      :height 50
+                      :alt (or-value
+                         (or-value (get author :avatarAlt) (get author :name))
+                         "Profile picture")))))
+      (when (and (truthy? author) (truthy? (get author :name)))
+        (let ((written (js-array)))
+          (js-call written :push "Written by ")
+          (js-call written :push (h "strong" nil (get author :name)))
+          (js-call written :push " ")
+          (js-call written
+                   :push
+                   (if (truthy? (get author :summary)) (get author :summary) nil))
+          (when (truthy? link)
+            (js-call written
+                     :push
+                     (fragment " " (h "a" (js-object :href (get link :href)) (get link :label)))))
+          (js-call children :push (h "p" nil written))))
+      (h "div" (js-object :className "bio") children)))
+
+  ;; ---------------------------------------------------------------- layout
+
+  (defun footer-links (site)
+    (let ((links (get (get site :footer) :links)))
+      (if (and (truthy? links) (> (get links :length) 0))
+          links
+        (js-array
+          (js-object
+            :label (or-value (get (get site :footer) :label) "SAOS")
+            :href (get (get site :footer) :href))))))
+
+  (defun Layout (props)
+    (let* ((pathname (get props :pathname))
+           (site (get props :site))
+           (title (get props :title))
+           (is-root (= pathname "/"))
+           (home-url (with-base-path "/" (get site :basePath)))
+           (header (if is-root
+                       (h "h1" (js-object :className "main-heading")
+                          (h "a" (js-object :href home-url) title))
+                     (h "a" (js-object :className "header-link-home" :href home-url) title)))
+           (links (footer-links site))
+           (credits (js-array))
+           (index 0))
+      (while (< index (get links :length))
+        (let ((link (js-nth index links)))
+          (js-call credits
+                   :push
+                   (fragment-keyed
+                     (str (get link :href) "-" (get link :label))
+                     (if (= index 0) " " " and ")
+                     (h "a" (js-object :href (get link :href)) (get link :label)))))
+        (setq index (1+ index)))
+      (h "div"
+         (js-object :className "global-wrapper" :data-is-root-path is-root)
+         (h "header" (js-object :className "global-header") header)
+         (h "main" nil (get props :children))
+         (if (not (= (get site :footer) false))
+             (let ((credits-line (js-array)))
+               ;; The copyright line and the credits are siblings, not a
+               ;; nested list, which is what the markup they replace says.
+               (js-call credits-line :push "© ")
+               (js-call credits-line
+                        :push
+                        (js-call (js* "new Date()") :getFullYear))
+               (js-call credits-line :push ", Built with")
+               (let ((index 0))
+                 (while (< index (get credits :length))
+                   (js-call credits-line :push (js-nth index credits))
+                   (setq index (1+ index))))
+               (h "footer" nil credits-line))
+           nil))))
+
+  ;; -------------------------------------------------------------- comments
+
+  (defun GiscusComments (props)
+    (let* ((config (get props :config))
+           (holder (useRef))
+           (enabled (and (truthy? config) (= (get config :provider) "giscus"))))
+      (useEffect
+        (lambda ()
+          (when enabled
+            (let* ((script (js-call (js* "document") :createElement "script"))
+                  (attributes (js-object
+                                :src "https://giscus.app/client.js"
+                                :data-repo (get config :repo)
+                                :data-repo-id (get config :repoId)
+                                :data-category (get config :category)
+                                :data-category-id (get config :categoryId)
+                                :data-mapping (or-value (get config :mapping) "pathname")
+                                :data-strict (if (= (get config :strict) false) "0" "1")
+                                :data-reactions-enabled (if (= (get config :reactions) false) "0" "1")
+                                :data-emit-metadata (if (truthy? (get config :emitMetadata)) "1" "0")
+                                :data-input-position (or-value (get config :inputPosition) "top")
+                                :data-theme (or-value (get config :theme) "light")
+                                :data-lang (or-value (get config :language) "en")
+                                :crossorigin "anonymous"
+                                :async t))
+                  (keys (js-call (js* "Object") :entries attributes))
+                  (index 0))
+              (while (< index (get keys :length))
+                (let* ((pair (js-nth index keys))
+                       (key (js-nth 0 pair))
+                       (value (js-nth 1 pair)))
+                  (when (and (not (nil? value))
+                             (not (= value ""))
+                             (not (= value (js* "undefined"))))
+                    (js-call script :setAttribute key value)))
+                (setq index (1+ index)))
+              (let ((timer (funcall
+                             (js* "setTimeout")
+                             (lambda ()
+                               (let ((current (get holder :current)))
+                                 (when (truthy? current)
+                                   (js-call current :append script))))
+                             300)))
+                (lambda ()
+                  (funcall (js* "clearTimeout") timer)
+                  (js-call script :remove))))))
+        (js-array config))
+      (if enabled (h "div" (js-object :ref holder)) nil)))
+
+  (export Seo Bio Layout GiscusComments))

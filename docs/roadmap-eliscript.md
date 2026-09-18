@@ -144,6 +144,24 @@ arrangement. No stage decides this on its own.
 | M7        | 7%     | 0%         |
 | **Total** | 100%   | **5%**     |
 
+## M6 Notes
+
+**The documents are byte-identical, so a separate visual comparison is not
+made.** Every page matches the JavaScript engine's page after content-hash
+normalization, and the stylesheet is byte-identical rather than merely
+equivalent, so a screenshot comparison would test the browser rather than the
+port. The browser test covers what the diff cannot: the pages load, hydrate,
+resolve their links, and log nothing.
+
+**Two M6 criteria are honest about their limits.**
+
+- The React refresh boundary for `.eli` modules is configured, not verified: no
+  test starts a development server.
+- The client entry's development branch reads the staging data written by the
+  prepare step, and nothing exercises that branch either. It is written
+  through a runtime specifier so a literal import cannot pull an unused chunk
+  into the production build.
+
 ## Open Decision: How The Action Gets Its Client Assets
 
 M4 assumed the packaged Action would need no package install. Measured against

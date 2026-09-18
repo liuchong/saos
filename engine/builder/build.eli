@@ -5,12 +5,13 @@
 ;; code path, so the Action cannot drift from the command line.
 
 (module saos.builder.build
-  (import "node:fs" mkdirSync renameSync writeFileSync)
+  (import "node:fs" mkdirSync renameSync rmSync writeFileSync)
   (import "node:path" :as Path)
   (import "node:url" fileURLToPath)
   (import "../support/config.eli" load-site-config)
   (import "../support/host.eli" truthy?)
   (import "./content.eli" load-site-data)
+  (import "./pages.eli" client-tags read-manifest write-pages)
   (import "./site.eli"
           build-client copy-content-assets copy-directory reset-output
           write-feed write-web-manifest)
@@ -38,14 +39,27 @@
       (if (truthy? value) (Path/resolve workspace value) nil)))
 
   (defasync build-site (options site data)
-    (let ((engine-root (Path/resolve (get options :engineRoot)))
-          (output-dir (Path/resolve (get options :outputDir))))
+    (let* ((engine-root (Path/resolve (get options :engineRoot)))
+           (output-dir (Path/resolve (get options :outputDir)))
+           (base-path (get site :basePath)))
       (reset-output output-dir)
-      (await (build-client engine-root output-dir (get site :basePath)))
-      (copy-directory (Path/join engine-root "static") output-dir nil)
-      (when (truthy? (get options :publicDir))
-        (copy-directory (get options :publicDir) output-dir nil))
-      (copy-content-assets (get options :contentDir) output-dir)
+      (await (build-client engine-root output-dir base-path))
+      ;; The page tags come from the Vite manifest, and the manifest does not
+      ;; survive the build, so it is read before the tree is finished.
+      (let ((tags (client-tags
+                    (read-manifest (Path/join output-dir ".vite" "manifest.json"))
+                    base-path)))
+        (rmSync (Path/join output-dir ".vite") (js-object :recursive t :force t))
+        (copy-directory (Path/join engine-root "static") output-dir nil)
+        (when (truthy? (get options :publicDir))
+          (copy-directory (get options :publicDir) output-dir nil))
+        (copy-content-assets (get options :contentDir) output-dir)
+        (write-pages
+          (js-object
+            :outputDir output-dir
+            :tags tags
+            :template (Path/join engine-root "index.html"))
+          data))
       (write-feed data output-dir)
       (write-web-manifest data output-dir)))
 

@@ -1,0 +1,53 @@
+;; The client entry, ported from src/entry-client.jsx.
+;;
+;; The stylesheets and font packages are imported here so the client bundle
+;; carries them, and a server rendered document is hydrated rather than
+;; replaced.
+
+(module saos.site.entry-client
+  (import "@fontsource-variable/montserrat")
+  (import "@fontsource/merriweather")
+  (import "../../src/normalize.css")
+  (import "../../src/style.css")
+  (import "prismjs/themes/prism.css")
+  (import "react-dom/client" createRoot hydrateRoot)
+  (import "../support/host.eli" truthy?)
+  (import "../ui/element.eli" h)
+  (import "./app.eli" App resolve-page)
+
+  (defconst window-value (js* "window"))
+  (defconst document-value (js* "document"))
+  (defconst is-development (js* "import.meta.env.DEV"))
+  (defconst error-value (js* "((message) => new Error(message))"))
+  (defconst console-value (js* "console"))
+  (defconst load-module (js* "((path) => import(/* @vite-ignore */ path))"))
+  (defconst dev-data-path "../../.saos-build/data.json")
+
+  (defun mount-node () (js-call document-value :getElementById "root"))
+
+  (defasync page-data ()
+    (if (truthy? (get window-value "__SAOS_PAGE_DATA__"))
+        (get window-value "__SAOS_PAGE_DATA__")
+      (if is-development
+          ;; Development reads the staging data the prepare step wrote, which
+          ;; is what the JavaScript entry does as well. The specifier goes
+          ;; through a variable so the bundler leaves it alone: a literal
+          ;; import here would emit a chunk the production build never uses.
+          (let ((module (await (funcall load-module dev-data-path))))
+            (resolve-page
+              (get (get window-value :location) :pathname)
+              (get module :default)))
+        (throw (funcall error-value "SAOS page data is missing")))))
+
+  (defasync render ()
+    (let ((node (mount-node)))
+      (when (truthy? node)
+        (let ((page (await (page-data))))
+          (if (js-call node :hasChildNodes)
+              (hydrateRoot node (h App (js-object :page page)))
+            (js-call (createRoot node) :render (h App (js-object :page page))))))))
+
+  (js-call (render)
+           :catch
+           (lambda (error)
+             (js-call console-value :error (get error :message)))))
