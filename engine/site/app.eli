@@ -195,6 +195,9 @@
         ((= (get page :type) "not-found") (h NotFoundPage (js-object :page page)))
         (t (h BlogIndex (js-object :page page))))))
 
+  ;; The document says which engine built it. A port that produces the same
+  ;; markup as the engine it replaced cannot otherwise be told apart from it in
+  ;; the artifact itself.
   (defun PageHead (props)
     (let ((page (get props :page)))
       (h Seo
@@ -202,6 +205,10 @@
            :defaultTitle (get (get page :site) :title)
            :description (or-value (get (get page :seo) :description)
                                   (get (get page :site) :description))
-           :title (get (get page :seo) :title)))))
+           :title (get (get page :seo) :title))
+         (h "meta"
+            (js-object
+              :name "generator"
+              :content "SAOS (Eliscript engine)")))))
 
   (export App PageHead Link resolve-page normalize-pathname))

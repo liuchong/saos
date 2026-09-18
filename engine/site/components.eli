@@ -28,7 +28,9 @@
         (h "meta" (js-object :property "og:type" :content "website"))
         (h "meta" (js-object :name "twitter:card" :content "summary"))
         (h "meta" (js-object :name "twitter:title" :content title))
-        (h "meta" (js-object :name "twitter:description" :content description)))))
+        (h "meta" (js-object :name "twitter:description" :content description))
+        ;; The caller's head content belongs after the defaults.
+        (get props :children))))
 
   ;; ------------------------------------------------------------------- bio
 
