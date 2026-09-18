@@ -1,0 +1,12 @@
+;; The server rendering layer.
+;;
+;; One place that names how a tree becomes text, so the page layer and the
+;; hydration entry agree about which renderer produced a document.
+
+(module saos.ui.server
+  (import "react-dom/server" renderToStaticMarkup renderToString)
+
+  (defun static-markup (element) (renderToStaticMarkup element))
+  (defun document-markup (element) (renderToString element))
+
+  (export static-markup document-markup))

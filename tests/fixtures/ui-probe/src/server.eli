@@ -1,0 +1,11 @@
+;; The server entry: the same trees, rendered to text.
+
+(module ui-probe.server
+  (import "../../../../engine/ui/element.eli" h)
+  (import "../../../../engine/ui/server.eli" document-markup)
+  (import "./app.eli" StoreApp NaiveApp)
+
+  (defun store-markup () (document-markup (h StoreApp nil)))
+  (defun naive-markup () (document-markup (h NaiveApp nil)))
+
+  (export store-markup naive-markup))

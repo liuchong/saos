@@ -1,0 +1,23 @@
+;; The leaf component both variants render, and the list builder they share.
+
+(module ui-probe.item
+  (import "../../../../engine/ui/element.eli" h h-keyed)
+  (import "./counters.eli" bump!)
+
+  (defun Item (props)
+    (bump! (get props :group))
+    (h "li" (js-object :className "item") (get props :label)))
+
+  (defun items-list (group total)
+    (let ((items (js-array))
+          (index 0))
+      (while (< index total)
+        (js-call items
+                 :push
+                 (h-keyed Item
+                          (js-object :group group :label (str "item " index))
+                          (str group "-" index)))
+        (setq index (1+ index)))
+      items))
+
+  (export Item items-list))

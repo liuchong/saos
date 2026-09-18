@@ -1,0 +1,29 @@
+;; Two counters: one subscribed to the store, one driven by a prop.
+
+(module ui-probe.counter
+  (import "../../../../engine/ui/element.eli" h)
+  (import "../../../../engine/ui/store.eli" deref swap! use-atom)
+  (import "./counters.eli" bump!)
+
+  (defun Counter (props)
+    (bump! (get props :group))
+    (h "div"
+       (js-object :className (get props :className))
+       (h "span" (js-object :className "value") (str (get props :value)))
+       (h "button" (js-object :onClick (get props :onClick)) "increment")))
+
+  ;; The subscribed form: this component re-renders when the reference
+  ;; changes, and nothing else has to.
+  (defun StoreCounter (props)
+    (let ((state (get props :state))
+          (value (use-atom (get props :state))))
+      (h "span"
+         (js-object :className "watched" :data-value (str (deref state)))
+         (h Counter
+            (js-object
+              :className "store-counter"
+              :group "store-counter"
+              :value value
+              :onClick (lambda () (swap! state (lambda (current) (+ current 1)))))))))
+
+  (export Counter StoreCounter))

@@ -1,0 +1,18 @@
+;; The hydration entry.
+;;
+;; Both trees in the document are hydrated, not re-rendered, so an SSR that
+;; disagrees with the client shows up as a hydration error rather than as a
+;; silently replaced document.
+
+(module ui-probe.client
+  (import "react-dom/client" hydrateRoot)
+  (import "../../../../engine/ui/element.eli" h)
+  (import "./app.eli" StoreApp NaiveApp)
+  (import "./probe.eli" publish!)
+
+  (defun mount! (id component)
+    (hydrateRoot (js-call (js* "document") :getElementById id) (h component nil)))
+
+  (publish!)
+  (mount! "store-root" StoreApp)
+  (mount! "naive-root" NaiveApp))

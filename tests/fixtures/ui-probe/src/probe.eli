@@ -1,0 +1,11 @@
+;; The measurement surface the browser test reads.
+
+(module ui-probe.probe
+  (import "./counters.eli" reads reset! summary)
+
+  (defun publish! ()
+    (put (js* "globalThis")
+         "uiProbe"
+         (js-object :reads reads :reset reset! :summary summary)))
+
+  (export publish!))

@@ -31,13 +31,13 @@ These are not preferences. They hold for every stage.
 
 ## Where Things Live
 
-| Thing                           | Location                                        | Why                                                                                                                                                                                             |
-| ------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Wrapper framework               | `ui/`                                           | One consumer. A separate package would add versioning and release overhead for no benefit, and SAOS is "the source is the product". Extraction becomes reasonable when a second consumer exists |
-| Not in the Eliscript repository | —                                               | Eliscript's own contract keeps framework integration as application evidence, not core maturity. Keeping the wrapper here also keeps the two release cadences apart                             |
-| This roadmap                    | `docs/roadmap-eliscript.md`                     | Updated at each stage exit; the progress percentages live here                                                                                                                                  |
-| Baseline harness                | `tools/baseline.mjs`, `docs/parity-baseline.md` | Reproducible numbers, frozen before the swap begins                                                                                                                                             |
-| Comparison instrument           | `tools/parity.mjs` (from M1)                    | Test-only dual-pipeline differ, deleted at M7                                                                                                                                                   |
+| Thing                           | Location                                        | Why                                                                                                                                                                                                                                                                                                  |
+| ------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wrapper framework               | `ui/`                                           | One consumer. A separate package would add versioning and release overhead for no benefit, and SAOS is "the source is the product". Extraction becomes reasonable when a second consumer exists. It sits under `engine/` because a project has one source root, and `.eli` imports may not escape it |
+| Not in the Eliscript repository | —                                               | Eliscript's own contract keeps framework integration as application evidence, not core maturity. Keeping the wrapper here also keeps the two release cadences apart                                                                                                                                  |
+| This roadmap                    | `docs/roadmap-eliscript.md`                     | Updated at each stage exit; the progress percentages live here                                                                                                                                                                                                                                       |
+| Baseline harness                | `tools/baseline.mjs`, `docs/parity-baseline.md` | Reproducible numbers, frozen before the swap begins                                                                                                                                                                                                                                                  |
+| Comparison instrument           | `tools/parity.mjs` (from M1)                    | Test-only dual-pipeline differ, deleted at M7                                                                                                                                                                                                                                                        |
 
 ## Stages
 
@@ -57,6 +57,17 @@ Weights sum to 100%. The whole roadmap is eight to nine commits.
 ## Stage Scope Refinements
 
 Recorded because a stage claim must be exactly as wide as its evidence.
+
+**M5 delivers an element function, not a hiccup macro.** The roadmap, and the
+brief behind it, asked for a hiccup macro layer. That is not possible in the
+current language: `defmacro` registers a macro in the compilation unit that
+declares it and a macro name cannot be imported, so an imported macro is simply
+unbound. Verified directly: a module that exports `shout` and a module that
+imports it fails with `unbound symbol: shout`. The options were a function
+layer, or a copy of the macro in every file that uses it. The function layer is
+what `engine/ui/element.eli` provides, and the language-side fix — a
+module-scoped macro library — is a candidate feature for the language project,
+not something this roadmap can implement.
 
 **M3 cannot produce pages, so the page-level criteria move to M6.** The
 JavaScript engine composes pages from the React server renderer, the client
@@ -170,7 +181,26 @@ here with the measurements so it can be decided with them.
   stop before M6. No unmeasured framework is kept.
 - A stage needs a publish to continue: stop and ask.
 
-### M4 Criteria
+### M5 Gate
+
+The gate existed so that a framework could not be kept on the strength of an
+argument. What it measured:
+
+| Quantity           | Result                                                                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| SSR and hydration  | The server rendered document hydrates with no console error or warning, so the server snapshot and the client's first value agree  |
+| Update granularity | A subscribed update re-renders 1 component; the equivalent root-state update re-renders 41                                         |
+| Wrapper cost       | 462 B gzip for the element layer and 556 B gzip for the store, against a 46,912 B gzip baseline client                             |
+| Page metrics       | Not comparable at this stage. The M0 baseline's `fcp`, `settle`, and blocking numbers describe a page, and no page exists until M6 |
+
+The granularity claim is measured against the equivalent naive tree, not
+against the M0 baseline, because M0 has no update metric: its pages carry no
+client state, which is recorded in `docs/parity-baseline.md`. The wrapper does
+not subtract from the M0 numbers and does not claim to; the honest statement is
+that it adds about a kilobyte and removes re-render work that a naive tree
+does. The gate is passed, so M6 proceeds.
+
+## M4 Criteria
 
 | Criterion                                                               | State                                                                                                  |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |

@@ -1,0 +1,33 @@
+;; Render accounting for the probe.
+;;
+;; A component bumps its group every time it is called, so "how many components
+;; re-rendered for this update" becomes a number the test can read instead of a
+;; timing the test would have to guess about.
+
+(module ui-probe.counters
+  (defconst counters (js-object))
+  (defconst delete-key (js* "((object, key) => { delete object[key]; })"))
+
+  (defun bump! (group)
+    (put counters group (1+ (or (get counters group) 0))))
+
+  (defun reads (group) (or (get counters group) 0))
+
+  (defun reset! ()
+    (let ((keys (js-call (js* "Object") :keys counters))
+          (index 0))
+      (while (< index (get keys :length))
+        (funcall delete-key counters (js-nth index keys))
+        (setq index (1+ index)))
+      nil))
+
+  (defun summary ()
+    (let ((keys (js-call (js* "Object") :keys counters))
+          (index 0)
+          (result (js-object)))
+      (while (< index (get keys :length))
+        (put result (js-nth index keys) (get counters (js-nth index keys)))
+        (setq index (1+ index)))
+      result))
+
+  (export bump! reads reset! summary))

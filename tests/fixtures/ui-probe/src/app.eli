@@ -1,0 +1,44 @@
+;; Two trees over the same leaf component.
+;;
+;; The store tree holds its count in a reference the counter subscribes to, so
+;; an update reaches the counter and stops there. The naive tree holds the same
+;; count in the root's state, so an update re-renders the root and every child
+;; under it. The difference is the claim this stage makes, and it is counted
+;; rather than timed.
+
+(module ui-probe.app
+  (import "react" useState)
+  (import "../../../../engine/ui/element.eli" h)
+  (import "../../../../engine/ui/store.eli" atom)
+  (import "./counter.eli" Counter StoreCounter)
+  (import "./item.eli" Item items-list)
+  (import "./counters.eli" bump!)
+
+  (defconst item-total 40)
+  (defconst store-state (atom 0))
+
+  (defun StoreApp ()
+    (bump! "store-root")
+    (h "section"
+       (js-object :className "variant" :id "store")
+       (h "h2" nil "store")
+       (h StoreCounter (js-object :state store-state))
+       (h "ul" (js-object :className "items") (items-list "store-items" item-total))))
+
+  (defun NaiveApp ()
+    (let* ((pair (useState 0))
+           (count (js-nth 0 pair))
+           (set-count (js-nth 1 pair)))
+      (bump! "naive-root")
+      (h "section"
+         (js-object :className "variant" :id "naive")
+         (h "h2" nil "naive")
+         (h Counter
+            (js-object
+              :className "naive-counter"
+              :group "naive-counter"
+              :value count
+              :onClick (lambda () (funcall set-count (+ count 1)))))
+         (h "ul" (js-object :className "items") (items-list "naive-items" item-total)))))
+
+  (export StoreApp NaiveApp))

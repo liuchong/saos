@@ -1,0 +1,41 @@
+;; The element layer.
+;;
+;; Eliscript macros are file-local, so a hiccup macro library cannot exist as a
+;; module: an imported macro name is simply unbound. This layer therefore
+;; offers the same thing as one function, which costs one call per element and
+;; keeps the concise shape.
+;;
+;; React stays an ordinary dependency. Nothing here is privileged by the
+;; compiler; these are calls into `react/jsx-runtime`, the automatic runtime.
+
+(module saos.ui.element
+  (import "react/jsx-runtime" jsx jsxs Fragment)
+
+  (defun merge-props (props children)
+    (if (= (length children) 0)
+        (or props (js-object))
+      (object-assoc
+        (or props (js-object))
+        "children"
+        (if (= (length children) 1) (js-nth 0 children) children))))
+
+  ;; `h` is the whole surface: a type, props or nil, and children.
+  (defun h (type props &rest children)
+    (let ((resolved (merge-props props children)))
+      (if (> (length children) 1) (jsxs type resolved) (jsx type resolved))))
+
+  ;; The automatic runtime takes a key as a third argument rather than as a
+  ;; prop, and a list needs one.
+  (defun h-keyed (type props key &rest children)
+    (let ((resolved (merge-props props children)))
+      (if (> (length children) 1)
+          (jsxs type resolved key)
+        (jsx type resolved key))))
+
+  (defun fragment (&rest children)
+    (jsx Fragment (merge-props nil children)))
+
+  (defun join-children (&rest values)
+    (if (= (length values) 1) (js-nth 0 values) values))
+
+  (export h h-keyed fragment merge-props join-children))

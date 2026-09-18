@@ -1,0 +1,57 @@
+;; The state layer.
+;;
+;; A subscription store over React's own external-store hook. The portable
+;; `stdlib/state/atom.eli` is unreachable from a project outside the Eliscript
+;; package, so this is its own small reference: a value, a watcher list, and a
+;; stable subscribe function, which is what `useSyncExternalStore` requires.
+;;
+;; The point of the layer is granularity: a component that subscribes to one
+;; reference re-renders when that reference changes, and the components around
+;; it do not.
+
+(module saos.ui.store
+  (import "react" useSyncExternalStore)
+
+  (defun atom (initial)
+    (let* ((watchers (js-array))
+           (state (js-object :value initial :watchers watchers)))
+      ;; `useSyncExternalStore` compares the snapshot by identity, and React
+      ;; resubscribes whenever `subscribe` changes identity, so both are made
+      ;; once and kept.
+      (put state :snapshot (lambda () (get state :value)))
+      (put state
+           :subscribe
+           (lambda (notify)
+             (js-call watchers :push notify)
+             (lambda ()
+               (let ((index (js-call watchers :indexOf notify)))
+                 (when (>= index 0)
+                   (js-call watchers :splice index 1))))))
+      state))
+
+  (defun deref (state) (get state :value))
+
+  (defun notify-watchers (state)
+    (let ((watchers (get state :watchers))
+          (index 0))
+      (while (< index (get watchers :length))
+        (funcall (js-nth index watchers))
+        (setq index (1+ index)))))
+
+  (defun commit! (state next)
+    (put state :value next)
+    (notify-watchers state)
+    next)
+
+  (defun reset! (state next) (commit! state next))
+
+  (defun swap! (state transform)
+    (commit! state (funcall transform (get state :value))))
+
+  (defun use-atom (state)
+    (useSyncExternalStore
+      (get state :subscribe)
+      (get state :snapshot)
+      (get state :snapshot)))
+
+  (export atom deref reset! swap! use-atom notify-watchers))
