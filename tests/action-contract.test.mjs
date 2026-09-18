@@ -87,9 +87,11 @@ const treeDigest = async root => {
 }
 
 const runAction = (workspaceRoot, environment) => {
+  // The outputs file belongs in a temporary directory: a run whose workspace
+  // is this repository must not leave a file in it.
   const outputs = path.join(
-    workspaceRoot,
-    `outputs-${Math.random().toString(36).slice(2)}.txt`,
+    os.tmpdir(),
+    `saos-outputs-${Math.random().toString(36).slice(2)}.txt`,
   )
 
   const entry =
