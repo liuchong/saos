@@ -26,8 +26,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { gzipSync } from "node:zlib"
 
-import { buildBlog } from "../scripts/build.mjs"
-import { normalizeBasePath } from "../src/path-utils.js"
+import { pathToFileURL } from "node:url"
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -161,10 +160,22 @@ const measureBuild = async ({ runs, warmup, workspace }) => {
   // build far slower than the ones after it. Warm-up builds are discarded so
   // the recorded number describes a warm build, which is what both engines
   // are compared on.
+  // The engine is loaded in this process and called directly, which is how the
+  // recorded JavaScript baseline was measured. Spawning the command line would
+  // add process startup to the number and make the two incomparable.
+  const { build_workspace: buildWorkspace } = await import(
+    pathToFileURL(
+      path.join(repositoryRoot, "dist", "engine", "builder", "build.mjs"),
+    ).href
+  )
+
   const build = async label => {
     const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), "saos-baseline-"))
     const started = process.hrtime.bigint()
-    const result = await buildBlog({ workspaceRoot, output: outputDir })
+    const result = await buildWorkspace({
+      workspace: workspaceRoot,
+      output: outputDir,
+    })
     const elapsed = Number(process.hrtime.bigint() - started) / 1e6
 
     console.log(`${label}: ${round(elapsed)} ms -> ${result.postCount} post(s)`)
@@ -188,11 +199,16 @@ const measureBuild = async ({ runs, warmup, workspace }) => {
     last = measured
   }
 
-  return {
-    outputDir: last.outputDir,
-    basePath: normalizeBasePath(last.result.site.basePath),
-    timings,
-  }
+  // The base path is read back from the site the engine produced, so this tool
+  // measures the output rather than re-deriving a rule the engine owns.
+  const document = await fs.readFile(
+    path.join(last.outputDir, "index.html"),
+    "utf8",
+  )
+  const script = /<script type="module" src="([^"]+)"><\/script>/.exec(document)
+  const basePath = script ? script[1].replace(/assets\/.*$/, "") : "/"
+
+  return { outputDir: last.outputDir, basePath, timings }
 }
 
 const collectArtifacts = async outputDir => {

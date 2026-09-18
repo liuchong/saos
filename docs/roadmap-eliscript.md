@@ -193,6 +193,26 @@ This is not a decision a stage may take on its own, because it changes a
 documented product property and the strength of the parity evidence. Recorded
 here with the measurements so it can be decided with them.
 
+## Outcome
+
+The engine swap is complete on this branch. The generator, the Action entry,
+the page composition, and the UI are Eliscript; the JavaScript pipeline that
+preceded them is deleted, along with the comparison tooling that proved the
+equivalence while both existed.
+
+Four things stay open, and none of them is hidden inside a stage claim:
+
+1. **The asset decision.** The Action still installs its dependency closure and
+   builds the client at run time. Shipping prebuilt assets instead would drop
+   the install and change a documented fork workflow; the measurements are in
+   the open decision section below.
+2. **No runner.** The Action's runtime contract is executed locally, not by a
+   GitHub Actions runner, because no runner is available here.
+3. **Development mode** is configured rather than verified.
+4. **Three language gaps** shaped the result and are recorded as findings: no
+   macro libraries, no standard library for external projects, and no way to
+   inline a native dependency into a single-file bundle.
+
 ## Abort Conditions
 
 - M5 does not beat the baseline on its measured metrics: record the numbers and

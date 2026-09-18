@@ -30,7 +30,7 @@ inputs:
   node-version:
     description: Node.js version used to build the site.
     required: false
-    default: "22"
+    default: "24"
 
 outputs:
   output-path:
@@ -52,6 +52,13 @@ runs:
       shell: bash
       run: npm ci --ignore-scripts --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"
 
+    # The engine is compiled in the runner. Its compiled output is not
+    # committed, so this is the step that turns the checked-out source into the
+    # program the next step runs.
+    - name: Compile the engine
+      shell: bash
+      run: npm --prefix "$GITHUB_ACTION_PATH" run engine
+
     - name: Build site
       id: build
       shell: bash
@@ -62,4 +69,5 @@ runs:
         SAOS_PUBLIC: ${{ inputs.public }}
         SAOS_OUTPUT: ${{ inputs.output }}
         SAOS_BASE: ${{ inputs.base }}
-      run: node "$GITHUB_ACTION_PATH/action/run.mjs"
+        GITHUB_ACTION_PATH: ${{ github.action_path }}
+      run: node "$GITHUB_ACTION_PATH/dist/engine/action/main.mjs"

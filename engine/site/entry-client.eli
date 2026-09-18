@@ -7,8 +7,8 @@
 (module saos.site.entry-client
   (import "@fontsource-variable/montserrat")
   (import "@fontsource/merriweather")
-  (import "../../src/normalize.css")
-  (import "../../src/style.css")
+  (import "./styles/normalize.css")
+  (import "./styles/style.css")
   (import "prismjs/themes/prism.css")
   (import "react-dom/client" createRoot hydrateRoot)
   (import "../support/host.eli" truthy?)

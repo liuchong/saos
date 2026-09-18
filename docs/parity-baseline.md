@@ -1,8 +1,13 @@
 # Parity Baseline
 
-The Eliscript engine swap is judged against numbers, not impressions. This file
-freezes what the current JavaScript engine does, so every later stage compares
-against the same definitions.
+The Eliscript engine swap was judged against numbers, not impressions. This
+file freezes what the JavaScript engine did, so every stage compared against
+the same definitions.
+
+The recorded numbers below are historical: they describe the JavaScript engine
+at `4e906c0`, before the swap. The harness that produced them now measures the
+Eliscript engine, and reports the same page sizes, the same stylesheet, and a
+client bundle of the same order.
 
 ## How To Reproduce
 

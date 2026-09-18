@@ -129,7 +129,7 @@ its discussion and keeps the comment thread attached to the article.
 | `public`       | `static`            | Static files copied to the output root |
 | `output`       | `dist`              | Generated site directory               |
 | `base`         | config value or `/` | URL prefix for Project Pages           |
-| `node-version` | `22`                | Node.js version used by the Action     |
+| `node-version` | `24`                | Node.js version used by the Action     |
 
 The Action outputs `output-path` and `post-count`.
 
@@ -137,23 +137,35 @@ The Action outputs `output-path` and `post-count`.
 
 ```bash
 npm ci
-npm run develop
+npm run engine   # compile the Eliscript engine
 npm test
-npm run build
+npm run build    # build the example site
+npm run dev      # development server
 ```
 
-The bundled example lives in `examples/basic`. To work against another content
-repository, point the CLI at its checkout:
+The generator is written in [Eliscript](https://github.com/liuchong/eliscript)
+and lives in `engine/`; `npm run engine` compiles it to `dist/engine/`. To work
+against another content repository, point the compiled entry at its checkout:
 
 ```bash
-node scripts/cli.mjs develop --workspace ../my-site
-node scripts/cli.mjs build --workspace ../my-site
+node dist/engine/builder/main.mjs --workspace ../my-site
+node dist/engine/builder/main.mjs --workspace ../my-site --output dist
 ```
 
 The build recursively discovers Markdown and MDX, renders React on the server,
 hydrates the generated pages in the browser, copies article-local assets, and
 writes RSS and a web manifest. Nothing prevents replacing any part of that
 pipeline; all implementation source ships with the Action.
+
+## Layout
+
+| Path             | Purpose                                                                 |
+| ---------------- | ----------------------------------------------------------------------- |
+| `engine/`        | The generator: builder, renderer, site components, and the Action entry |
+| `engine/ui/`     | The minimal element and store layer over React                          |
+| `tests/`         | Contract, rendering, and browser tests                                  |
+| `docs/`          | The engine-swap roadmap and the acceptance record                       |
+| `examples/basic` | A workspace to build and test against                                   |
 
 ## License
 

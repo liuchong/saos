@@ -46,15 +46,12 @@
     "url": "git+https://github.com/liuchong/saos.git"
   },
   "scripts": {
-    "build": "node scripts/cli.mjs build --workspace examples/basic",
-    "parity": "node tools/parity.mjs",
-    "package": "eliscript-build --config eliscript.json && node dist/engine/tools/package.mjs",
-    "develop": "node scripts/cli.mjs develop --workspace examples/basic",
+    "engine": "eliscript-build --config eliscript.json",
+    "build": "npm run engine && node dist/engine/builder/main.mjs --workspace examples/basic",
+    "dev": "npm run engine && node dist/engine/builder/main.mjs --workspace examples/basic --model-out .saos-build/data.json --model-only && vite",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,md}\"",
-    "start": "npm run develop",
-    "serve": "vite preview --host 127.0.0.1",
-    "clean": "node scripts/cli.mjs clean --workspace examples/basic",
+    "package": "npm run engine && node dist/engine/tools/package.mjs",
     "test": "node --test --test-concurrency=1 && npm run format:check"
   }
 }

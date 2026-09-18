@@ -13,6 +13,8 @@ import path from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
 
+import { parse as parseYaml } from "yaml"
+
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -246,3 +248,45 @@ test(
     ])
   },
 )
+
+test("declares the published action contract", async () => {
+  const metadata = parseYaml(
+    await fs.readFile(path.join(repositoryRoot, "action.yml"), "utf8"),
+  )
+
+  assert.equal(metadata.name, "SAOS Blog")
+  assert.equal(metadata.runs.using, "composite")
+
+  // The inputs a workflow already passes, with the defaults it already relies
+  // on. The engine changed; none of these did.
+  const inputs = {
+    base: "",
+    config: "saos.config.mjs",
+    content: "content/blog",
+    output: "dist",
+    public: "static",
+  }
+
+  for (const [name, value] of Object.entries(inputs)) {
+    assert.equal(metadata.inputs[name].required, false, name)
+    assert.equal(metadata.inputs[name].default, value, name)
+  }
+
+  // The engine needs a newer Node than the previous one did. The input keeps
+  // its name and its meaning; only the version a workflow gets by default
+  // moved.
+  assert.equal(metadata.inputs["node-version"].default, "24")
+
+  for (const name of ["output-path", "post-count"]) {
+    assert.equal(
+      metadata.outputs[name].value,
+      `\${{ steps.build.outputs.${name} }}`,
+      name,
+    )
+  }
+
+  // The step that runs is the engine's Action entry, not the removed script.
+  const run = metadata.runs.steps.find(step => step.id === "build")
+
+  assert.match(run.run, /dist\/engine\/action\/main\.mjs/)
+})
