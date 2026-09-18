@@ -7,5 +7,5 @@ Giscus configuration, and deployment below a URL base path.
 Build it from the repository root:
 
 ```sh
-npm run build:example
+npm run build
 ```

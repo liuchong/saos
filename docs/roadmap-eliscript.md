@@ -224,6 +224,15 @@ dependency stays where it was: `eliscript` pinned to exactly `0.0.1`.
 The version the plan froze was the project's, not the engine's; that
 distinction is what this section exists to record.
 
+Testing the release changed it twice more, without moving the version:
+
+- The tag was replaced once. The released commit ignored the `content`,
+  `config`, and `public` inputs, which a workflow that passes them would have
+  hit; the fix and the `v1.0.0` tag now point at the same commit.
+- Every page carries a generator meta tag, so the artifact states which engine
+  built it. A port that reproduces the markup of the engine it replaced cannot
+  be identified from the output otherwise.
+
 ## Abort Conditions
 
 - M5 does not beat the baseline on its measured metrics: record the numbers and

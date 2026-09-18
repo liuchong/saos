@@ -4,9 +4,10 @@
 
 > 网站可以简单，但一定要骚。
 
-SAOS is a source-first React blog generator packaged as a GitHub Action. It
-builds Markdown and MDX from your repository with its own Vite and React source,
-then produces a static site ready for GitHub Pages.
+SAOS is a source-first blog generator packaged as a GitHub Action. Its
+generator is written in [Eliscript](https://github.com/liuchong/eliscript) and
+compiled by the Action; it builds Markdown and MDX from your repository,
+renders React on the server, and produces a static site ready for GitHub Pages.
 
 It is deliberately not a sealed blog product. Reference the Action when the
 defaults fit; fork the repository and edit the renderer, components, CSS, or
@@ -109,16 +110,26 @@ export default {
     categoryId: "...",
   },
   footer: {
-    links: [
-      { label: "Vite", href: "https://vite.dev" },
-      { label: "My source", href: "https://github.com/ada/blog" },
-    ],
+    links: [{ label: "My source", href: "https://github.com/ada/blog" }],
   },
 }
 ```
 
+| Key                                           | Meaning                                                                                                                                                                          |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`, `description`, `siteUrl`, `language` | Site identity, the URL the feed links to, and the document language                                                                                                              |
+| `basePath`                                    | URL prefix, for a project page rather than a domain root                                                                                                                         |
+| `author`                                      | `name`, `summary`, `avatar`, `avatarAlt`, `link`                                                                                                                                 |
+| `comments`                                    | Giscus settings: `provider`, `repo`, `repoId`, `category`, `categoryId`, and the optional `mapping`, `strict`, `reactions`, `emitMetadata`, `inputPosition`, `theme`, `language` |
+| `footer`                                      | `label` and `href`, or `links` for several credits, or `false` for none                                                                                                          |
+| `rss`                                         | `title` for the feed, or `false` for no feed                                                                                                                                     |
+| `manifest`                                    | `shortName`, `backgroundColor`, `display`, `icons`, or `false` for no web manifest                                                                                               |
+
 Giscus comments are optional. When configured, SAOS maps each page pathname to
 its discussion and keeps the comment thread attached to the article.
+
+Every page carries `<meta name="generator" content="SAOS (Eliscript engine)">`,
+so a built site says which engine produced it.
 
 ## Action Inputs
 
@@ -156,6 +167,10 @@ The build recursively discovers Markdown and MDX, renders React on the server,
 hydrates the generated pages in the browser, copies article-local assets, and
 writes RSS and a web manifest. Nothing prevents replacing any part of that
 pipeline; all implementation source ships with the Action.
+
+`npm run package` compiles the Action into a single file under `dist/action/`
+with a manifest of the digest of every engine source, which is what a consumer
+of a fork can verify against.
 
 ## Layout
 

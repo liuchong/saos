@@ -67,8 +67,8 @@ one it replaced. The numbers above are its last recorded run on this source.
 - **The release is unsigned by CI.** `v1.0.0` was tagged and released by hand
   from a verified local build. No workflow produced it, and no Marketplace
   listing change was made through the release UI.
-- **`0.0.1` was never published to npm and still is not.** The package is
-  `private`, so there is nothing to publish; the release is a Git tag.
+- **Nothing was published to npm.** The package is `private`, so a release
+  here is a Git tag and a GitHub Release rather than a registry publication.
 - **No real runner here.** The Action's runtime contract is exercised by
   running the entry point a runner would run, with the environment a workflow
   would set. A run on GitHub's runners is a separate observation and is
@@ -99,9 +99,31 @@ one it replaced. The numbers above are its last recorded run on this source.
   the same content, down to the client chunk's content hash.
 - That run also showed what the release could not do: a workflow that passes
   `content`, `config`, or `public` was ignored, because a keyword used as a
-  value is not its name. The runner found it in a minute of CI. The fix is on
-  `master` and is not in the `v1.0.0` tag, which the site does not exercise
-  because it uses the defaults.
+  value is not its name. The site did not exercise it, because the site uses
+  the defaults; the repository's own workflow does, and the runner found it in
+  a minute.
+- The tag was replaced rather than a version added: `v1.0.0` now points at the
+  commit that carries the fix and the generator meta tag, and the release notes
+  were rewritten with it. Deploying again from that tag put the marker on the
+  live site, which is how the replacement was confirmed.
+
+### What The Release Observation Added
+
+Everything below was found by running the release rather than reading it.
+
+| Finding                                                                                       | Where it came from                                                | State                                                                             |
+| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| CI ran Node 22 while the engine needs 24                                                      | The repository's own workflow, first run                          | Fixed: one version in the workflow, the Action default, the README, and `engines` |
+| The browser tests hung on the runner: `playwright-core` drives a browser it does not download | The same run                                                      | Fixed: the workflow installs Chromium before the tests                            |
+| The Action ignored `content`, `config`, and `public`                                          | The same run: it built from `content/blog` and failed with ENOENT | Fixed, with a contract test that runs the Action in that exact shape              |
+| The configuration merge never recognised `footer: false`, `rss: false`, or `manifest: false`  | Found while fixing the above; the same cause                      | Fixed                                                                             |
+| The `Seo` component never rendered the children it was given                                  | Found while adding the generator tag                              | Fixed                                                                             |
+| A tag is not a description: nothing in the output said which engine built it                  | The owner asked how to tell                                       | Every page now carries a generator meta tag                                       |
+
+The cause of the third and fourth is one language fact: a keyword used as a
+value is an interned keyword object rather than its name, so a property read
+with a keyword in the key position finds nothing. Keys that travel as values
+are strings.
 
 ## Known Gaps In The Engine
 
