@@ -35,4 +35,4 @@
           (str (js-call collapsed :slice 0 excerpt-kept) "...")
         collapsed)))
 
-  (export escape-html create-excerpt))
+  (export escape-html create-excerpt replace-all))

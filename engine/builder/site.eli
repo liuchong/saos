@@ -1,0 +1,147 @@
+;; Site artifacts, ported from scripts/build.mjs.
+;;
+;; This module owns the output tree outside the rendered pages: the feed, the
+;; web manifest, the copied static and content files, and the Vite client
+;; build that produces the assets. Page composition arrives with the UI port,
+;; because it needs a renderer that does not exist yet.
+
+(module saos.builder.site
+  (import "node:fs"
+          copyFileSync existsSync mkdirSync readdirSync rmSync statSync
+          writeFileSync)
+  (import "node:path" :as Path)
+  (import "vite" build)
+  (import "../support/host.eli" truthy?)
+  (import "../support/paths.eli" with-base-path)
+  (import "../support/text.eli" replace-all)
+
+  (defconst string-of (js* "String"))
+  (defconst json-stringify (js* "JSON.stringify"))
+  (defconst date-of (js* "((value) => new Date(value))"))
+
+  (defun escape-xml (value)
+    (let ((text (funcall string-of value)))
+      (replace-all
+        (replace-all
+          (replace-all
+            (replace-all (replace-all text "&" "&amp;") "<" "&lt;")
+            ">" "&gt;")
+          "\"" "&quot;")
+        "'" "&apos;")))
+
+  (defun reset-output (output-dir)
+    (rmSync output-dir (js-object :recursive t :force t)))
+
+  ;; ------------------------------------------------------------------ copy
+
+  (defun copy-tree (from to relative predicate)
+    (let ((source (if (= relative "") from (Path/join from relative)))
+          (target (if (= relative "") to (Path/join to relative))))
+      (if (js-call (statSync source) :isDirectory)
+          (progn
+            (mkdirSync target (js-object :recursive t))
+            (let ((names (readdirSync source))
+                  (index 0))
+              (while (< index (get names :length))
+                (let ((name (js-nth index names)))
+                  (when (not (= name ".DS_Store"))
+                    (let ((child (if (= relative "") name (Path/join relative name))))
+                      (when (or (nil? predicate)
+                                (funcall predicate (Path/join from child)))
+                        (copy-tree from to child predicate)))))
+                (setq index (1+ index)))))
+        (copyFileSync source target))))
+
+  (defun copy-directory (from to predicate)
+    (when (and (truthy? from) (existsSync from))
+      (copy-tree from to "" predicate)))
+
+  (defun content-asset? (source)
+    (let ((extension (js-call (Path/extname source) :toLowerCase)))
+      (and (not (= extension ".md")) (not (= extension ".mdx")))))
+
+  (defun copy-content-assets (content-dir output-dir)
+    (copy-directory content-dir output-dir content-asset?))
+
+  ;; --------------------------------------------------------------- artifacts
+
+  (defun feed-item (site-url base-path post)
+    (let ((url (str site-url (with-base-path (get post :slug) base-path))))
+      (str "<item>"
+           "<title>" (escape-xml (get post :title)) "</title>"
+           "<description>"
+           (escape-xml (if (truthy? (get post :description))
+                           (get post :description)
+                         (get post :excerpt)))
+           "</description>"
+           "<link>" (escape-xml url) "</link>"
+           "<guid>" (escape-xml url) "</guid>"
+           "<pubDate>"
+           (js-call (funcall date-of (get post :dateISO)) :toUTCString)
+           "</pubDate>"
+           "<content:encoded><![CDATA["
+           (replace-all (get post :html) "]]>" "]]]]><![CDATA[>")
+           "]]></content:encoded>"
+           "</item>")))
+
+  (defun feed-items (site-url base-path posts)
+    (let ((rendered (js-array))
+          (index 0))
+      (while (< index (get posts :length))
+        (js-call rendered :push (feed-item site-url base-path (js-nth index posts)))
+        (setq index (1+ index)))
+      (js-call rendered :join "\n")))
+
+  (defun write-feed (site-data output-dir)
+    (let ((site (get site-data :site)))
+      (when (and (not (= (get site :rss) false)) (truthy? (get site :siteUrl)))
+        (let* ((site-url (js-call (get site :siteUrl) :replace (js* "/\\/$/") ""))
+               (title (or (get (get site :rss) :title) (str (get site :title) " RSS Feed")))
+               (home-url (str site-url (get site :basePath)))
+               (document (str "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                              "<rss version=\"2.0\" xmlns:content=\"http://purl.org/rss/1.0/modules/content/\">\n"
+                              "<channel>\n"
+                              "<title>" (escape-xml title) "</title>\n"
+                              "<description>" (escape-xml (get site :description)) "</description>\n"
+                              "<link>" (escape-xml home-url) "</link>\n"
+                              (feed-items site-url (get site :basePath) (get site-data :postsDescending))
+                              "\n</channel>\n</rss>\n")))
+          (writeFileSync (Path/join output-dir "rss.xml") document)))))
+
+  (defun write-web-manifest (site-data output-dir)
+    (when (not (= (get (get site-data :site) :manifest) false))
+      (let* ((site (get site-data :site))
+             (config (get site :manifest))
+             (manifest (js-object
+                         :name (get site :title)
+                         :short_name (or (get config :shortName) (get site :title))
+                         :start_url (get site :basePath)
+                         :background_color (or (get config :backgroundColor) "#ffffff")
+                         :display (or (get config :display) "minimal-ui")
+                         :icons (or (get config :icons) (js-array)))))
+        (writeFileSync
+          (Path/join output-dir "manifest.webmanifest")
+          (str (funcall json-stringify manifest nil 2) "\n")))))
+
+  ;; ------------------------------------------------------------ client build
+
+  (defasync build-client (engine-root output-dir base-path)
+    (await (build
+             (js-object
+               :root engine-root
+               :configFile (Path/join engine-root "vite.config.js")
+               :base base-path
+               :build
+               (js-object
+                 :outDir output-dir
+                 :emptyOutDir t
+                 :manifest t
+                 :rollupOptions
+                 (js-object
+                   :input (Path/join engine-root "src" "entry-client.jsx"))))))
+    ;; The manifest is read for the page tags in the UI stage; the JavaScript
+    ;; engine deletes it here too, so the output tree matches.
+    (rmSync (Path/join output-dir ".vite") (js-object :recursive t :force t)))
+
+  (export reset-output copy-directory copy-content-assets write-feed
+          write-web-manifest build-client))

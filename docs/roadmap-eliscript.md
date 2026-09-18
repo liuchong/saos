@@ -58,6 +58,17 @@ Weights sum to 100%. The whole roadmap is eight to nine commits.
 
 Recorded because a stage claim must be exactly as wide as its evidence.
 
+**M3 cannot produce pages, so the page-level criteria move to M6.** The
+JavaScript engine composes pages from the React server renderer, the client
+tags in the Vite manifest, and the HTML template. A page therefore cannot
+exist until the UI is ported, which is M6. M3 owns what does not depend on the
+UI: the client build, the feed, the web manifest, the copied static and content
+files, and the output layout. The 404 alias and the "links resolve under a
+local server" check move to M6 with the pages, and neither is dropped. The
+artifact check counts the files the JavaScript engine produces and this stage
+does not, and prints them, so the gap is visible on every run instead of being
+described in prose.
+
 **M2 folds its visual comparison into M3.** M2 renders post fragments, not
 pages: there is no document to look at until M3 composes the template, the
 client tags, and the page data. The visual check therefore belongs to M3,

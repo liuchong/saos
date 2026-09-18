@@ -86,9 +86,12 @@ misleading.
    third-party script and require the network. M5's comparison must therefore
    use a probe that carries real client state, and no SAOS-wide claim may be
    derived from that probe.
-3. **`buildMs` is a warm-cache number.** Vite's dependency optimization makes the
-   first build several times slower. Both engines are compared warm, in the same
-   process shape.
+3. **`buildMs` is a warm-cache number, and asset hashes move with that cache.**
+   Vite's dependency optimization makes the first build several times slower,
+   and it can change emitted chunk hashes between sessions. Both engines are
+   compared warm, in the same process shape, and both read the same cache, so a
+   parity comparison always compares one cache state against itself. A recorded
+   baseline size or hash is only comparable within one cache state.
 4. **Assets dominate the transfer, not JavaScript.** 260 kB of self-hosted fonts
    against 47 kB of gzipped JavaScript. A change that only moves JavaScript will
    look small in transfer terms.

@@ -21,6 +21,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
+import { buildBlog } from "../scripts/build.mjs"
 import { loadSiteConfig, loadSiteData } from "../scripts/blog-data.mjs"
 
 const repositoryRoot = path.resolve(
@@ -417,6 +418,91 @@ const checkWorkspace = async (options, workspace) => {
   return { differences, coverage: coverage ?? [] }
 }
 
+const walkTree = async root => {
+  const found = []
+  const pending = [""]
+
+  while (pending.length > 0) {
+    const relative = pending.pop()
+    const absolute = relative ? path.join(root, relative) : root
+    const entries = await fs.readdir(absolute, { withFileTypes: true })
+
+    for (const entry of entries) {
+      const next = relative ? path.join(relative, entry.name) : entry.name
+
+      if (entry.isDirectory()) {
+        pending.push(next)
+      } else if (entry.isFile()) {
+        found.push(next)
+      }
+    }
+  }
+
+  return found.sort()
+}
+
+const checkArtifacts = async (options, workspace) => {
+  const workspaceRoot = path.resolve(repositoryRoot, workspace)
+  const javascriptDir = await fs.mkdtemp(path.join(os.tmpdir(), "saos-js-"))
+  const eliscriptDir = await fs.mkdtemp(path.join(os.tmpdir(), "saos-eli-"))
+
+  try {
+    await buildBlog({ workspaceRoot, output: javascriptDir })
+
+    const run = spawnSync(
+      process.execPath,
+      [
+        path.join(repositoryRoot, "dist", "engine", "builder", "main.mjs"),
+        "--workspace",
+        workspaceRoot,
+        "--output",
+        eliscriptDir,
+      ],
+      { encoding: "utf8", cwd: repositoryRoot },
+    )
+
+    if (run.status !== 0) {
+      throw new Error(
+        `the Eliscript build exited with ${run.status}: ${(run.stderr.trim() || run.stdout.trim()).split("\n").pop()}`,
+      )
+    }
+
+    const javascriptFiles = await walkTree(javascriptDir)
+    const eliscriptFiles = await walkTree(eliscriptDir)
+    const differences = []
+
+    for (const file of eliscriptFiles) {
+      if (!javascriptFiles.includes(file)) {
+        differences.push({
+          file,
+          reason: "the javascript engine does not produce it",
+        })
+        continue
+      }
+
+      const [left, right] = await Promise.all([
+        fs.readFile(path.join(javascriptDir, file)),
+        fs.readFile(path.join(eliscriptDir, file)),
+      ])
+
+      if (!left.equals(right)) {
+        differences.push({ file, reason: "bytes differ" })
+      }
+    }
+
+    return {
+      compared: eliscriptFiles.length,
+      differences,
+      notYet: javascriptFiles.filter(file => !eliscriptFiles.includes(file)),
+    }
+  } finally {
+    await Promise.all([
+      fs.rm(javascriptDir, { recursive: true, force: true }),
+      fs.rm(eliscriptDir, { recursive: true, force: true }),
+    ])
+  }
+}
+
 const main = async () => {
   const options = parseArguments(process.argv.slice(2))
 
@@ -437,9 +523,31 @@ const main = async () => {
 
   for (const workspace of options.workspaces) {
     const result = await checkWorkspace(options, workspace)
+    const artifacts = await checkArtifacts(options, workspace)
 
     failed += result.differences.length
     failed += result.coverage.filter(entry => entry.missing.length > 0).length
+    failed += artifacts.differences.length
+
+    if (!options.quiet) {
+      console.log("SAOS artifact parity")
+      console.log(`  workspace:   ${workspace}`)
+      console.log(
+        `  identical:   ${artifacts.compared - artifacts.differences.length}/${artifacts.compared} file(s)`,
+      )
+
+      for (const difference of artifacts.differences) {
+        console.log(`    ${difference.file}: ${difference.reason}`)
+      }
+
+      console.log(
+        `  not yet:     ${artifacts.notYet.length} file(s) this stage does not produce`,
+      )
+      console.log(
+        `    ${artifacts.notYet.slice(0, 6).join(", ")}${artifacts.notYet.length > 6 ? ", ..." : ""}`,
+      )
+      console.log("")
+    }
   }
 
   const diagnostics = await runDiagnostics(options)
