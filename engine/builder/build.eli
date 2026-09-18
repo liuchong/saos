@@ -34,6 +34,9 @@
       (writeFileSync (str target ".tmp") text)
       (renameSync (str target ".tmp") target)))
 
+  ;; Keys travel as strings. A keyword used as a value is an interned keyword
+  ;; object rather than its name, so `(get options key)` with a keyword in
+  ;; `key` reads nothing and every option silently falls back to its default.
   (defun resolve-option (options key workspace fallback)
     (let ((value (or (get options key) fallback)))
       (if (truthy? value) (Path/resolve workspace value) nil)))
@@ -67,10 +70,10 @@
     (let* ((workspace (Path/resolve (get options :workspace)))
            (engine-root (Path/resolve (or (get options :engineRoot)
                                           (default-engine-root))))
-           (content-dir (resolve-option options :content workspace "content/blog"))
+           (content-dir (resolve-option options "content" workspace "content/blog"))
            (config (or (get options :config) "saos.config.mjs"))
-           (config-path (resolve-option options :config workspace "saos.config.mjs"))
-           (public-dir (resolve-option options :public workspace "static"))
+           (config-path (resolve-option options "config" workspace "saos.config.mjs"))
+           (public-dir (resolve-option options "public" workspace "static"))
            (output-dir (Path/resolve workspace (or (get options :output) "dist")))
            (base (or (get options :base) ""))
            (model-out (or (get options :modelOut) ""))

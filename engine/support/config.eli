@@ -43,6 +43,8 @@
 
   (defun has-own? (object key) (funcall object-has object key))
 
+  ;; The key is a string: a keyword passed as a value is a keyword object, not
+  ;; its name, so this would never find the property it was asked about.
   (defun is-disabled? (source key)
     (and (has-own? source key) (= (get source key) false)))
 
@@ -60,7 +62,7 @@
                       (js-object))))
       (put merged
            :footer
-           (if (is-disabled? source :footer)
+           (if (is-disabled? source "footer")
                false
              (funcall object-assign
                       (js-object)
@@ -70,14 +72,14 @@
                         (js-object)))))
       (put merged
            :rss
-           (if (is-disabled? source :rss)
+           (if (is-disabled? source "rss")
                false
              (funcall object-assign
                       (js-object)
                       (if (truthy? (get source :rss)) (get source :rss) (js-object)))))
       (put merged
            :manifest
-           (if (is-disabled? source :manifest)
+           (if (is-disabled? source "manifest")
                false
              (funcall object-assign
                       (js-object)

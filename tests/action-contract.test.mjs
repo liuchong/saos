@@ -170,6 +170,38 @@ test("uses the published defaults when a workflow sets nothing", async () => {
   await fs.rm(workspace, { recursive: true, force: true })
 })
 
+test("reads the content, config and public paths a workflow passes", async () => {
+  // This is the shape the repository's own workflow uses: the workspace is the
+  // checkout root and every content path points into the example. A default
+  // that ignored the passed value would still build, from the wrong
+  // directory, which is what happened before this test existed.
+  buildEngine()
+  const output = await fs.mkdtemp(path.join(os.tmpdir(), "saos-paths-"))
+  const { outputs, result } = runAction(repositoryRoot, {
+    SAOS_CONFIG: "examples/basic/saos.config.mjs",
+    SAOS_CONTENT: "examples/basic/content/blog",
+    SAOS_OUTPUT: output,
+    SAOS_PUBLIC: "examples/basic/static",
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+
+  const values = await readOutputs(outputs)
+
+  assert.equal(values["post-count"], "2")
+  assert.equal(values["output-path"], output)
+
+  const produced = await fs.readdir(output)
+
+  assert.ok(produced.includes("hello"))
+  assert.ok(
+    produced.includes("robots.txt"),
+    "the public directory came through",
+  )
+
+  await fs.rm(output, { recursive: true, force: true })
+})
+
 test("fails loudly instead of publishing a wrong site", async () => {
   buildEngine()
   const workspace = await workspaceCopy()
