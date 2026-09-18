@@ -16,9 +16,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
+      # The browser tests launch Chromium. playwright-core drives a browser it
+      # does not download, so the runner has to install one.
+      - run: npx playwright install --with-deps chromium
       - run: npm test
       - name: Build through the local Action
         uses: ./

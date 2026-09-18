@@ -4,7 +4,10 @@
   "type": "module",
   "description": "A source-first, self-building React blog for GitHub Actions.",
   "version": "1.0.0",
-  "author": "\u5218\u51b2",
+  "author": "刘冲",
+  "engines": {
+    "node": ">=24"
+  },
   "bugs": {
     "url": "https://github.com/liuchong/saos/issues"
   },
